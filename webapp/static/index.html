@@ -48,12 +48,61 @@
   a { color: var(--accent); }
   .loading, .error { color: var(--muted); padding: 20px 0; }
   .error { color: var(--bad); }
+
+  /* --- panel wyboru zrodla danych (nowe) --- */
+  .src-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .src-btn {
+    background: #0d131b; color: var(--text); border: 1px solid var(--panel-border);
+    border-radius: 5px; padding: 8px 14px; font-family: var(--mono); font-size: 13px;
+    cursor: pointer;
+  }
+  .src-btn:hover { border-color: var(--accent-dim); }
+  .src-btn.active { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+  .src-controls { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-border); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .src-controls input, .src-controls select {
+    background: #0d131b; color: var(--text); border: 1px solid var(--panel-border);
+    border-radius: 4px; padding: 6px 8px; font-family: var(--mono); font-size: 13px;
+  }
+  .src-controls button {
+    background: var(--accent-dim); color: #fff; border: 1px solid var(--accent);
+    border-radius: 4px; padding: 6px 12px; font-family: var(--mono); font-size: 13px; cursor: pointer;
+  }
+  .src-controls button.secondary { background: #0d131b; color: var(--text); border-color: var(--panel-border); }
+  .src-note { color: var(--muted); font-size: 12px; width: 100%; margin-top: 4px; }
+  .device-status { color: var(--unconfirmed); font-size: 12px; width: 100%; }
 </style>
 </head>
 <body>
 
 <h1>TIMDR-Aviation-Diagnostics — dashboard</h1>
-<div class="sub">Transfer TIMDR-Core (1:1 z TIMDR-Earthquake-Core) do diagnostyki lotniczej/silnikowej — realne dane NASA C-MAPSS FD001, unit 1.</div>
+<div class="sub">Transfer TIMDR-Core (1:1 z TIMDR-Earthquake-Core) do diagnostyki lotniczej/silnikowej — te same metody A/B/C na czterech możliwych źródłach sygnału.</div>
+
+<div class="panel" id="source-panel">
+  <h2>Źródło danych</h2>
+  <div class="src-tabs">
+    <button class="src-btn active" data-src="demo">Demo (unit 1, realne dane)</button>
+    <button class="src-btn" data-src="synthetic">Demo syntetyczne (2. przebieg)</button>
+    <button class="src-btn" data-src="upload">Wczytaj plik</button>
+    <button class="src-btn" data-src="device">Z urządzenia (port szeregowy)</button>
+  </div>
+
+  <div class="src-controls" id="controls-upload" style="display:none">
+    <input type="file" id="upload-file" accept=".txt,.csv">
+    <input type="number" id="upload-unit" placeholder="unit (opcjonalnie)" style="width:160px">
+    <button id="upload-go">Wczytaj plik</button>
+    <div class="src-note">Format: ten sam co cmapss_fd001_unit1.txt (C-MAPSS, min. 26 kolumn rozdzielonych spacją, sensor 4 w kolumnie 9). Jeśli plik zawiera więcej niż jedną jednostkę (unit), podaj którą wziąć.</div>
+  </div>
+
+  <div class="src-controls" id="controls-device" style="display:none">
+    <select id="device-port"><option value="">(kliknij „Odśwież porty”)</option></select>
+    <button class="secondary" id="device-refresh">Odśwież porty</button>
+    <label>baud <input type="number" id="device-baud" value="9600" style="width:90px"></label>
+    <label>próbek <input type="number" id="device-samples" value="60" style="width:90px"></label>
+    <button id="device-go">Odczytaj</button>
+    <div class="device-status" id="device-status"></div>
+    <div class="src-note">Wymaga urządzenia wysyłającego jedną wartość liczbową na linię (np. Arduino przez Serial.println). UWAGA: ta ścieżka nie była testowana na prawdziwym sprzęcie w środowisku, w którym powstał ten kod (sandbox bez portów szeregowych) — patrz README.</div>
+  </div>
+</div>
 
 <div id="warn-banner" class="warn-banner">Ładowanie danych…</div>
 
@@ -64,10 +113,10 @@
 
 <div class="panel">
   <h2>Metoda A — baseline SPC (surowa wartość czujnika)</h2>
-  <div class="chart-wrap"><svg class="chart" id="chart-a" viewBox="0 0 900 260" role="img" aria-label="Surowa wartość czujnika sensor 4 z pasmem bazowym i cyklem alarmu"></svg></div>
+  <div class="chart-wrap"><svg class="chart" id="chart-a" viewBox="0 0 900 260" role="img" aria-label="Surowa wartość czujnika z pasmem bazowym i cyklem alarmu"></svg></div>
   <div class="legend">
     <span><span class="dot" style="background:var(--accent)"></span>surowa wartość czujnika</span>
-    <span><span class="dot" style="background:var(--band)"></span>pasmo bazowe (±3σ z cykli 1–30)</span>
+    <span><span class="dot" style="background:var(--band)"></span>pasmo bazowe (±3σ z pierwszych 30 próbek)</span>
     <span><span class="dot" style="background:var(--alarm-line)"></span>cykl alarmu</span>
   </div>
 </div>
@@ -77,7 +126,7 @@
   <div class="chart-wrap"><svg class="chart" id="chart-b" viewBox="0 0 900 260" role="img" aria-label="Lokalny gradient TIMDR flow z pasmem bazowym i cyklem alarmu"></svg></div>
   <div class="legend">
     <span><span class="dot" style="background:var(--accent)"></span>flow_grad (gradient LSQ, k=8)</span>
-    <span><span class="dot" style="background:var(--band)"></span>pasmo bazowe (±3σ z cykli 1–30)</span>
+    <span><span class="dot" style="background:var(--band)"></span>pasmo bazowe (±3σ z pierwszych 30 próbek)</span>
     <span><span class="dot" style="background:var(--alarm-line)"></span>cykl alarmu</span>
   </div>
 </div>
@@ -98,14 +147,19 @@
 </div>
 
 <footer>
-  Dane: NASA C-MAPSS FD001, unit 1 (192 cykle, awaria w cyklu 192) — jedyny realny przebieg
-  dostępny w tym środowisku (patrz README, sekcja „Co jest tu realne”). n=1 — to demonstracja
-  metody, NIE walidacja statystyczna. Kod: <a href="https://github.com/jbackk-lang/TIMDR-Aviation-Diagnostics" target="_blank">TIMDR-Aviation-Diagnostics</a>.
+  Kod: <a href="https://github.com/jbackk-lang/TIMDR-Aviation-Diagnostics" target="_blank">TIMDR-Aviation-Diagnostics</a>.
+  Realne dane: NASA C-MAPSS FD001, unit 1 (jedyny realny przebieg dostępny w tym środowisku,
+  patrz README „Co jest tu realne”). Demo syntetyczne, wczytany plik i odczyt z urządzenia
+  NIE są realną walidacją metody — patrz baner ostrzegawczy nad wykresami dla aktywnego źródła.
 </footer>
 
 <script>
-async function fetchRun() {
-  const res = await fetch("/api/engine_run");
+function fmtLead(v) {
+  return v === null || v === undefined ? "brak alarmu" : `${v} cykli`;
+}
+
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `HTTP ${res.status}`);
@@ -113,14 +167,10 @@ async function fetchRun() {
   return res.json();
 }
 
-function fmtLead(v) {
-  return v === null || v === undefined ? "brak alarmu" : `${v} cykli`;
-}
-
 function renderSummary(run) {
   const rows = [run.method_a, run.method_b, run.method_c];
   let html = `<table><thead><tr>
-    <th>Metoda</th><th>Cykl alarmu</th><th>Lead time</th><th>Fałszywy alarm (cykle 1–60)</th>
+    <th>Metoda</th><th>Cykl alarmu</th><th>Lead time</th><th>Fałszywy alarm (próbki 1–60)</th>
   </tr></thead><tbody>`;
   for (const m of rows) {
     const fp = m.false_positive_1_60;
@@ -165,7 +215,6 @@ function drawLineChart(svgId, xs, ys, opts) {
     return el;
   };
 
-  // pasmo bazowe (referencja +/- k*std)
   if (opts.band) {
     addEl("rect", {
       x: padL, y: yToPx(opts.band[1]),
@@ -174,31 +223,25 @@ function drawLineChart(svgId, xs, ys, opts) {
     });
   }
 
-  // osie
   addEl("line", { x1: padL, y1: padT, x2: padL, y2: padT + plotH, stroke: "#2a3a4d" });
   addEl("line", { x1: padL, y1: padT + plotH, x2: padL + plotW, y2: padT + plotH, stroke: "#2a3a4d" });
 
-  // etykiety osi X (skrajne + srodek)
   [xMin, Math.round((xMin + xMax) / 2), xMax].forEach((v) => {
     addEl("text", { x: xToPx(v), y: H - 8, fill: "#7b8ca0", "font-size": "11px", "text-anchor": "middle" }).textContent = `cykl ${v}`;
   });
-  // etykiety osi Y (min/max)
   [yMin + yPad, yMax - yPad].forEach((v) => {
     addEl("text", { x: padL - 6, y: yToPx(v) + 4, fill: "#7b8ca0", "font-size": "11px", "text-anchor": "end" }).textContent = v.toFixed(2);
   });
 
-  // linia danych
   const points = xs.map((x, i) => `${xToPx(x)},${yToPx(ys[i])}`).join(" ");
   addEl("polyline", { points, fill: "none", stroke: "var(--accent)", "stroke-width": "1.6" });
 
-  // pionowa linia alarmu
   if (opts.alarmCycle !== null && opts.alarmCycle !== undefined) {
     const ax = xToPx(opts.alarmCycle);
     addEl("line", { x1: ax, y1: padT, x2: ax, y2: padT + plotH, stroke: "var(--alarm-line)", "stroke-width": "1.5", "stroke-dasharray": "4,3" });
     addEl("text", { x: ax, y: padT + 12, fill: "var(--alarm-line)", "font-size": "11px", "text-anchor": "middle" }).textContent = `alarm: cykl ${opts.alarmCycle}`;
   }
 
-  // punkty anomalii (rozproszenie)
   if (opts.markerCycles && opts.markerCycles.length) {
     for (const c of opts.markerCycles) {
       const idx = xs.indexOf(c);
@@ -208,29 +251,40 @@ function drawLineChart(svgId, xs, ys, opts) {
   }
 }
 
-async function main() {
-  let run;
-  try {
-    run = await fetchRun();
-  } catch (e) {
-    document.getElementById("warn-banner").outerHTML =
-      `<div class="error">Błąd ładowania danych: ${e.message}</div>`;
-    document.getElementById("summary-table").innerHTML = "";
-    return;
+function bannerFor(run) {
+  if (run.source === "cmapss_real") {
+    return `<b>n=1 (jeden silnik), REALNE DANE.</b> Demonstracja metody na pojedynczym, realnym ` +
+      `przebiegu run-to-failure (NASA C-MAPSS FD001, unit 1), NIE walidacja statystyczna. Metoda C ` +
+      `(anomalies) daje najwcześniejszy sygnał, ale jest niepotwierdzona bez kontroli negatywnej.`;
   }
+  if (run.source === "synthetic") {
+    return `<b>SYNTETYCZNE dane — to NIE jest realny silnik.</b> Wygenerowane proceduralnie ` +
+      `(szum gaussowski + narastający kwadratowy dryft) wyłącznie jako drugie demo do sprawdzenia ` +
+      `interfejsu na innym kształcie sygnału — nie wyciągaj z tego żadnych wniosków o rzeczywistych silnikach.`;
+  }
+  if (run.source === "upload") {
+    return `<b>Plik użytkownika (unit ${run.unit}).</b> Analiza zakłada format C-MAPSS (sensor 4, ` +
+      `kolumna 9). Wiarygodność wyniku zależy wyłącznie od tego, co faktycznie zawiera wgrany plik — ` +
+      `bez dodatkowej weryfikacji formatu poza sprawdzeniem liczby kolumn.`;
+  }
+  if (run.source === "device_live") {
+    return `<b>Live z urządzenia.</b> Pojedyncza wartość czujnika na próbkę, cykl = kolejny numer ` +
+      `próbki (nie realny cykl silnika). Ta ścieżka (odczyt portu szeregowego) NIE była testowana ` +
+      `na prawdziwym sprzęcie w środowisku, w którym powstał ten kod — traktuj wynik ostrożnie.`;
+  }
+  return "";
+}
 
-  document.getElementById("warn-banner").innerHTML =
-    `<b>n=1 (jeden silnik).</b> To jest demonstracja metody na pojedynczym, realnym przebiegu ` +
-    `run-to-failure, NIE walidacja statystyczna. Metoda C (anomalies) daje najwcześniejszy sygnał, ` +
-    `ale jest niepotwierdzona bez kontroli negatywnej — patrz panel niżej i README repo.`;
+function renderRun(run) {
+  const banner = document.getElementById("warn-banner");
+  banner.className = "warn-banner";
+  banner.innerHTML = bannerFor(run);
 
   renderSummary(run);
 
   const cycle = run.cycle;
 
   const a = run.method_a;
-  // pasmo A liczone wprost z surowych danych (mean/std pierwszych 30 cykli) —
-  // ten sam przelicznik co server-side w analysis.py (referencja zamrozona z cykli 1-30)
   const ref30A = run.sensor_raw.slice(0, 30);
   const meanA = ref30A.reduce((s, v) => s + v, 0) / ref30A.length;
   const stdA = Math.sqrt(ref30A.reduce((s, v) => s + (v - meanA) ** 2, 0) / ref30A.length);
@@ -240,13 +294,8 @@ async function main() {
   });
 
   const b = run.method_b;
-  // flow_grad nie jest bezposrednio w payloadzie (tylko z-score) -- do
-  // wykresu B uzywamy z-score wprost (ta sama informacja o ksztalcie
-  // przebiegu, jednostki inne niz surowy sygnal, ale to wlasnie to, na
-  // czym dziala reguła alarmu metody B).
-  const bandB = [-3, 3];
   drawLineChart("chart-b", cycle, b.series, {
-    band: bandB,
+    band: [-3, 3],
     alarmCycle: b.alarm_cycle,
   });
 
@@ -256,7 +305,104 @@ async function main() {
   });
 }
 
-main();
+function showLoading() {
+  const banner = document.getElementById("warn-banner");
+  banner.className = "warn-banner";
+  banner.textContent = "Ładowanie danych…";
+  document.getElementById("summary-table").innerHTML = `<div class="loading">Ładowanie…</div>`;
+}
+
+function showError(e) {
+  const banner = document.getElementById("warn-banner");
+  banner.className = "warn-banner error";
+  banner.textContent = `Błąd ładowania danych: ${e.message}`;
+  document.getElementById("summary-table").innerHTML = "";
+}
+
+async function loadDemo() {
+  showLoading();
+  try { renderRun(await fetchJSON("/api/engine_run")); } catch (e) { showError(e); }
+}
+
+async function loadSynthetic() {
+  showLoading();
+  try { renderRun(await fetchJSON("/api/synthetic_run")); } catch (e) { showError(e); }
+}
+
+async function loadUpload() {
+  const fileInput = document.getElementById("upload-file");
+  if (!fileInput.files.length) { alert("Najpierw wybierz plik."); return; }
+  const unitVal = document.getElementById("upload-unit").value.trim();
+  const fd = new FormData();
+  fd.append("file", fileInput.files[0]);
+  let url = "/api/upload";
+  if (unitVal) url += `?unit=${encodeURIComponent(unitVal)}`;
+  showLoading();
+  try {
+    renderRun(await fetchJSON(url, { method: "POST", body: fd }));
+  } catch (e) { showError(e); }
+}
+
+async function refreshPorts() {
+  const sel = document.getElementById("device-port");
+  const status = document.getElementById("device-status");
+  sel.innerHTML = `<option value="">ładowanie…</option>`;
+  status.textContent = "";
+  try {
+    const ports = await fetchJSON("/api/serial/ports");
+    if (!ports.length) {
+      sel.innerHTML = `<option value="">(brak wykrytych portów)</option>`;
+    } else {
+      sel.innerHTML = ports.map(p => `<option value="${p.device}">${p.device}${p.description ? " — " + p.description : ""}</option>`).join("");
+    }
+  } catch (e) {
+    sel.innerHTML = `<option value="">(niedostępne)</option>`;
+    status.textContent = e.message;
+  }
+}
+
+async function loadDevice() {
+  const port = document.getElementById("device-port").value;
+  if (!port) { alert("Wybierz port (najpierw kliknij „Odśwież porty”)."); return; }
+  const baud = document.getElementById("device-baud").value || 9600;
+  const samples = document.getElementById("device-samples").value || 60;
+  showLoading();
+  try {
+    const run = await fetchJSON(
+      `/api/serial/read?port=${encodeURIComponent(port)}&baud=${encodeURIComponent(baud)}&samples=${encodeURIComponent(samples)}`,
+      { method: "POST" }
+    );
+    renderRun(run);
+  } catch (e) { showError(e); }
+}
+
+function setupSourceTabs() {
+  const buttons = document.querySelectorAll(".src-btn");
+  const controlPanels = {
+    upload: document.getElementById("controls-upload"),
+    device: document.getElementById("controls-device"),
+  };
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      buttons.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      Object.values(controlPanels).forEach((p) => p.style.display = "none");
+
+      const src = btn.dataset.src;
+      if (src === "demo") { loadDemo(); }
+      else if (src === "synthetic") { loadSynthetic(); }
+      else if (src === "upload") { controlPanels.upload.style.display = "flex"; }
+      else if (src === "device") { controlPanels.device.style.display = "flex"; }
+    });
+  });
+
+  document.getElementById("upload-go").addEventListener("click", loadUpload);
+  document.getElementById("device-refresh").addEventListener("click", refreshPorts);
+  document.getElementById("device-go").addEventListener("click", loadDevice);
+}
+
+setupSourceTabs();
+loadDemo();
 </script>
 </body>
 </html>

@@ -126,6 +126,25 @@ HTTP 400, nie cichy/zmyślony wynik — gotowe pod przyszłe rozszerzenie na
 100 silników (patrz "Jak zrobić to porządnie"), nie obietnica, że już
 działa.
 
+## Cztery źródła danych w dashboardzie (2026-09-17)
+
+Dashboard liczy DOKŁADNIE tym samym rdzeniem (`analysis.py`, metody A/B/C)
+na czterech różnych źródłach sygnału, wybieranych zakładkami w interfejsie:
+
+| Źródło | Endpoint | Co to jest |
+|---|---|---|
+| Demo (unit 1) | `GET /api/engine_run` | jedyne realne dane w tym repo (opisane wyżej) |
+| Demo syntetyczne | `GET /api/synthetic_run` | wygenerowany proceduralnie (szum + narastający dryft), jawnie oznaczony jako NIE realne dane — drugi przebieg do sprawdzenia interfejsu na innym kształcie sygnału |
+| Wczytaj plik | `POST /api/upload` | własny plik użytkownika w formacie C-MAPSS (jak `cmapss_fd001_unit1.txt`) |
+| Z urządzenia | `GET /api/serial/ports`, `POST /api/serial/read` | odczyt N próbek (jedna liczba/linia) z portu szeregowego, wymaga `pyserial` |
+
+**Zastrzeżenie o ścieżce urządzenia**: kod czytający port szeregowy
+(`webapp/app.py`, `/api/serial/*`) powstał w środowisku bez dostępu do
+portów szeregowych (sandbox) — logika parsowania próbek jest przetestowana
+(`analysis.compute_run_from_device_samples`), ale sam odczyt z prawdziwego
+urządzenia NIE został przetestowany end-to-end. Przetestuj ostrożnie na
+własnym sprzęcie (np. Arduino wysyłający `Serial.println(wartość)`).
+
 ## Pliki
 
 - `cmapss_fd001_unit1.txt` — realne dane NASA C-MAPSS FD001, unit 1 (192
@@ -137,5 +156,6 @@ działa.
   jak i `webapp/app.py`.
 - `test_engine_degradation.py` — skrypt opisany wyżej, uruchamialny wprost:
   `python3 test_engine_degradation.py`.
-- `webapp/app.py`, `webapp/static/index.html` — dashboard (patrz wyżej).
+- `webapp/app.py`, `webapp/static/index.html` — dashboard (patrz wyżej,
+  sekcja "Cztery źródła danych").
 - `run.bat`, `requirements.txt` — uruchomienie dashboardu na Windows.
