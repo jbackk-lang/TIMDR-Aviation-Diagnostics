@@ -40,7 +40,7 @@ echo  wymaga polaczenia z internetem. Zamknij to okno (Ctrl+C), zeby
 echo  zatrzymac serwer.)
 echo.
 
-start "" http://127.0.0.1:8010
+start "" /min cmd /c "timeout /t 3 /nobreak >nul & start http://127.0.0.1:8010"
 python -m uvicorn webapp.app:app --host 127.0.0.1 --port 8010
 
 pause
