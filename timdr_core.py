@@ -1,11 +1,31 @@
 """
 KOPIA 1:1 z repo TIMDR-Earthquake-Core (timdr_core_earthquake.py, commit
-171e89c i nowsze) - bez zadnych zmian w logice. flow()/twist()/anomalies()
-sa z definicji generyczne dla dowolnego sygnalu czasowego t/s (nie
-sejsmicznego) - tutaj `t` = numer cyklu silnika, `s` = odczyt czujnika.
-Nazwa klasy zostawiona bez zmian celowo, dla identyfikowalnosci wzgledem
-oryginalnego, przetestowanego (68/68 testow, sta_lta zweryfikowane co do
-bitu z ObsPy) zrodla - patrz TIMDR-Aviation-Diagnostics/README.md.
+171e89c i nowsze) - bez zadnych zmian w logice, Z JEDNYM WYJATKIEM opisanym
+w POPRAWCE ponizej. flow()/twist()/anomalies() sa z definicji generyczne
+dla dowolnego sygnalu czasowego t/s (nie sejsmicznego) - tutaj `t` = numer
+cyklu silnika, `s` = odczyt czujnika. Nazwa klasy zostawiona bez zmian
+celowo, dla identyfikowalnosci wzgledem oryginalnego, przetestowanego
+(68/68 testow, sta_lta zweryfikowane co do bitu z ObsPy) zrodla - patrz
+TIMDR-Aviation-Diagnostics/README.md.
+
+POPRAWKA (2026-09-17, realny blad uzytkownika na Windows z Device Guard):
+`from scipy.signal import savgol_filter` na poziomie modulu wywalal caly
+import tego pliku (a wiec cala appke, dashboard wlacznie) z
+`ImportError: DLL load failed ... Device Guard`, mimo ze savgol_filter
+jest uzywany WYLACZNIE wewnatrz `_trm_savgol()`, wywolywanej TYLKO gdy
+`trm(method="savgol")` jest jawnie podane - `flow()`/`anomalies()` (jedyne
+metody, ktorych uzywa dashboard tego repo, patrz analysis.py) wolaja
+`trm()` z domyslnym `method="median"`, ktory scipy w ogole nie potrzebuje.
+Ten sam blad i ten sam rodzaj poprawki co w Synoptyk-v3
+(`membrane/interpolate.py`, patrz tamtejsze README) - import owiniety w
+try/except, blad rzucany DOPIERO przy faktycznej probie uzycia
+method="savgol" bez scipy, nie przy samym imporcie modulu. UWAGA O ZAKRESIE
+POPRAWKI: to repo deklaruje sie jako "kopia 1:1" zrodla
+TIMDR-Earthquake-Core - ta poprawka jest jedynym miejscem, gdzie to juz
+NIEPRAWDA (zrodlowy plik w TIMDR-Earthquake-Core prawdopodobnie ma ten sam
+lezacy blad, nienaprawiony w tamtym repo w ramach tej sesji - do
+zweryfikowania/naprawienia tam osobno, jesli ktos natrafi na ten sam
+problem uruchamiajac TIMDR-Earthquake-Core na maszynie z Device Guard).
 
 TIMDR-Earthquake-Core — timdr_core_earthquake.py
 ==================================================
@@ -17,7 +37,12 @@ Wejście: t (znaczniki czasu, sekundy, ściśle rosnące), s (amplituda).
 """
 
 import numpy as np
-from scipy.signal import savgol_filter
+
+try:
+    from scipy.signal import savgol_filter
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
 
 
 class TIMDR_EarthquakeCore:
@@ -226,6 +251,13 @@ class TIMDR_EarthquakeCore:
         return smooth
 
     def _trm_savgol(self, s, window_length, polyorder):
+        if not _HAS_SCIPY:
+            raise ImportError(
+                "trm(method='savgol') wymaga scipy, ktore nie dalo sie "
+                "zaimportowac w tym srodowisku (np. blokada Device Guard "
+                "na Windows) - uzyj method='median' albo method='adaptive' "
+                "(oba dzialaja bez scipy) zamiast 'savgol'."
+            )
         n = len(s)
         if window_length is None:
             window_length = min(n if n % 2 == 1 else n - 1, max(polyorder + 2, 11))
