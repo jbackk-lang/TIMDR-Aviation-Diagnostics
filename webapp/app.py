@@ -26,6 +26,20 @@ Endpointy:
                                  srodowisku, w ktorym powstal (sandbox bez
                                  dostepu do portow szeregowych) -- patrz
                                  README, sekcja "Zrodlo: urzadzenie".
+- GET  /api/audio/devices        — lista urzadzen audio z wejsciem (w tym
+                                 sparowane sluchawki/zestawy Bluetooth
+                                 widoczne w systemie jako urzadzenie
+                                 wejsciowe) -- wymaga sounddevice; jesli
+                                 niedostepne, HTTP 501.
+- POST /api/audio/record          — nagrywa audio z wybranego urzadzenia i
+                                 liczy dominujaca czestotliwosc (FFT) w
+                                 kolejnych oknach czasowych jako serie
+                                 probek dla tego samego rdzenia A/B/C
+                                 (patrz analysis.dominant_frequency_series
+                                 -- ta ekstrakcja cechy JEST przetestowana
+                                 syntetycznie; sam odczyt z prawdziwego
+                                 mikrofonu/Bluetooth NIE, z tego samego
+                                 powodu co /api/serial/read).
 """
 from __future__ import annotations
 
@@ -46,11 +60,13 @@ from analysis import (  # noqa: E402
     compute_run_from_device_samples,
     compute_run_from_upload,
     compute_synthetic_run,
+    dominant_frequency_series,
 )
 
-# pyserial jest OPCJONALNY -- ten sam wzorzec co scipy w timdr_core.py
-# (patrz commit "Napraw import scipy..."): brak pakietu / zablokowany
-# import nie moze wywrocic calej appki, tylko wylaczyc /api/serial/*.
+# pyserial i sounddevice sa OPCJONALNE -- ten sam wzorzec co scipy w
+# timdr_core.py (patrz commit "Napraw import scipy..."): brak pakietu /
+# zablokowany import / brak sprzetu nie moze wywrocic calej appki, tylko
+# wylaczyc odpowiednia grupe endpointow.
 try:
     import serial  # pyserial
     import serial.tools.list_ports as _list_ports
@@ -62,6 +78,22 @@ _SERIAL_UNAVAILABLE_MSG = (
     "pyserial niedostepny w tym srodowisku (pakiet niezainstalowany lub "
     "zablokowany) -- zainstaluj 'pip install pyserial' (jest w "
     "requirements.txt) i uruchom ponownie."
+)
+
+try:
+    import sounddevice as _sd
+    _HAS_AUDIO = True
+except (ImportError, OSError):
+    # OSError -- sounddevice zainstalowany, ale biblioteka natywna
+    # PortAudio niedostepna w systemie (typowy blad na "golym" Linuxie
+    # bez libportaudio2, moze sie zdarzyc tez na zablokowanym Windows).
+    _HAS_AUDIO = False
+
+_AUDIO_UNAVAILABLE_MSG = (
+    "sounddevice niedostepny w tym srodowisku (pakiet niezainstalowany, "
+    "brak biblioteki PortAudio, lub brak urzadzenia audio) -- zainstaluj "
+    "'pip install sounddevice' (jest w requirements.txt) i uruchom "
+    "ponownie."
 )
 
 app = FastAPI(title="TIMDR-Aviation-Diagnostics dashboard")
@@ -146,6 +178,60 @@ def api_serial_read(port: str, baud: int = 9600, samples: int = 60, timeout_s: f
         )
     try:
         return compute_run_from_device_samples(values, port_label=port)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/audio/devices")
+def api_audio_devices():
+    if not _HAS_AUDIO:
+        raise HTTPException(status_code=501, detail=_AUDIO_UNAVAILABLE_MSG)
+    try:
+        devices = _sd.query_devices()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"blad odczytu listy urzadzen audio: {e}")
+    return [
+        {"index": i, "name": d["name"], "max_input_channels": d["max_input_channels"]}
+        for i, d in enumerate(devices)
+        if d["max_input_channels"] > 0
+    ]
+
+
+@app.post("/api/audio/record")
+def api_audio_record(device: int, duration_s: float = 20.0, window_s: float = 0.5, samplerate: int = 16000):
+    if not _HAS_AUDIO:
+        raise HTTPException(status_code=501, detail=_AUDIO_UNAVAILABLE_MSG)
+    if window_s <= 0 or duration_s / window_s < 30:
+        raise HTTPException(
+            status_code=400,
+            detail=f"duration_s/window_s musi dac co najmniej 30 okien (okno "
+            f"referencyjne); teraz {duration_s / window_s if window_s > 0 else 0:.1f}.",
+        )
+
+    try:
+        n_samples = int(duration_s * samplerate)
+        audio = _sd.rec(n_samples, samplerate=samplerate, channels=1, dtype="float32", device=device)
+        _sd.wait()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"blad nagrywania audio: {e}")
+
+    values = dominant_frequency_series(audio[:, 0], samplerate, window_s=window_s)
+    if len(values) < 30:
+        raise HTTPException(
+            status_code=502,
+            detail=f"nagranie dalo tylko {len(values)} okien -- potrzeba co najmniej 30.",
+        )
+
+    device_name = f"audio#{device}"
+    try:
+        device_name = _sd.query_devices(device)["name"]
+    except Exception:
+        pass  # nazwa opcjonalna -- brak nie powinien wywalic calego wyniku
+
+    try:
+        return compute_run_from_device_samples(
+            values, port_label=device_name, device_kind="mikrofon, dominujaca czestotliwosc"
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

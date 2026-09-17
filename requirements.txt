@@ -4,3 +4,4 @@ numpy>=1.26
 scipy>=1.11
 python-multipart>=0.0.9
 pyserial>=3.5
+sounddevice>=0.4

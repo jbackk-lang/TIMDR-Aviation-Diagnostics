@@ -51,13 +51,13 @@
 
   /* --- panel wyboru zrodla danych (nowe) --- */
   .src-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-  .src-btn {
+  .src-btn, .devsrc-btn {
     background: #0d131b; color: var(--text); border: 1px solid var(--panel-border);
     border-radius: 5px; padding: 8px 14px; font-family: var(--mono); font-size: 13px;
     cursor: pointer;
   }
-  .src-btn:hover { border-color: var(--accent-dim); }
-  .src-btn.active { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+  .src-btn:hover, .devsrc-btn:hover { border-color: var(--accent-dim); }
+  .src-btn.active, .devsrc-btn.active { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
   .src-controls { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-border); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .src-controls input, .src-controls select {
     background: #0d131b; color: var(--text); border: 1px solid var(--panel-border);
@@ -83,7 +83,7 @@
     <button class="src-btn active" data-src="demo">Demo (unit 1, realne dane)</button>
     <button class="src-btn" data-src="synthetic">Demo syntetyczne (2. przebieg)</button>
     <button class="src-btn" data-src="upload">Wczytaj plik</button>
-    <button class="src-btn" data-src="device">Z urządzenia (port szeregowy)</button>
+    <button class="src-btn" data-src="device">Z urządzenia</button>
   </div>
 
   <div class="src-controls" id="controls-upload" style="display:none">
@@ -93,14 +93,31 @@
     <div class="src-note">Format: ten sam co cmapss_fd001_unit1.txt (C-MAPSS, min. 26 kolumn rozdzielonych spacją, sensor 4 w kolumnie 9). Jeśli plik zawiera więcej niż jedną jednostkę (unit), podaj którą wziąć.</div>
   </div>
 
-  <div class="src-controls" id="controls-device" style="display:none">
-    <select id="device-port"><option value="">(kliknij „Odśwież porty”)</option></select>
-    <button class="secondary" id="device-refresh">Odśwież porty</button>
-    <label>baud <input type="number" id="device-baud" value="9600" style="width:90px"></label>
-    <label>próbek <input type="number" id="device-samples" value="60" style="width:90px"></label>
-    <button id="device-go">Odczytaj</button>
-    <div class="device-status" id="device-status"></div>
-    <div class="src-note">Wymaga urządzenia wysyłającego jedną wartość liczbową na linię (np. Arduino przez Serial.println). UWAGA: ta ścieżka nie była testowana na prawdziwym sprzęcie w środowisku, w którym powstał ten kod (sandbox bez portów szeregowych) — patrz README.</div>
+  <div class="src-controls" id="controls-device" style="display:none; flex-direction:column; align-items:flex-start;">
+    <div class="src-tabs">
+      <button class="devsrc-btn active" data-devsrc="serial">Port szeregowy</button>
+      <button class="devsrc-btn" data-devsrc="audio">Mikrofon (Bluetooth audio)</button>
+    </div>
+
+    <div class="src-controls" id="devsrc-serial" style="border-top:none; padding-top:10px; margin-top:10px;">
+      <select id="device-port"><option value="">(kliknij „Odśwież porty”)</option></select>
+      <button class="secondary" id="device-refresh">Odśwież porty</button>
+      <label>baud <input type="number" id="device-baud" value="9600" style="width:90px"></label>
+      <label>próbek <input type="number" id="device-samples" value="60" style="width:90px"></label>
+      <button id="device-go">Odczytaj</button>
+      <div class="device-status" id="device-status"></div>
+      <div class="src-note">Wymaga urządzenia wysyłającego jedną wartość liczbową na linię (np. Arduino przez Serial.println). UWAGA: ta ścieżka nie była testowana na prawdziwym sprzęcie w środowisku, w którym powstał ten kod (sandbox bez portów szeregowych) — patrz README.</div>
+    </div>
+
+    <div class="src-controls" id="devsrc-audio" style="display:none; border-top:none; padding-top:10px; margin-top:10px;">
+      <select id="audio-device"><option value="">(kliknij „Odśwież urządzenia”)</option></select>
+      <button class="secondary" id="audio-refresh">Odśwież urządzenia</button>
+      <label>czas nagrania (s) <input type="number" id="audio-duration" value="20" style="width:90px"></label>
+      <label>okno (s) <input type="number" id="audio-window" value="0.5" step="0.1" style="width:90px"></label>
+      <button id="audio-go">Nagraj i analizuj</button>
+      <div class="device-status" id="audio-status"></div>
+      <div class="src-note">Wybierz mikrofon wejściowy (w tym sparowany zestaw/słuchawki Bluetooth widoczne w systemie jako urządzenie audio). Cecha liczona z nagrania: dominująca częstotliwość (FFT) w każdym oknie czasowym — to demonstracja ścieżki, NIE zwalidowana metoda diagnostyki silnika po dźwięku. UWAGA: ta ścieżka nie była testowana na prawdziwym mikrofonie w środowisku, w którym powstał ten kod (sandbox bez sprzętu audio) — patrz README.</div>
+    </div>
   </div>
 </div>
 
@@ -268,9 +285,17 @@ function bannerFor(run) {
       `bez dodatkowej weryfikacji formatu poza sprawdzeniem liczby kolumn.`;
   }
   if (run.source === "device_live") {
-    return `<b>Live z urządzenia.</b> Pojedyncza wartość czujnika na próbkę, cykl = kolejny numer ` +
-      `próbki (nie realny cykl silnika). Ta ścieżka (odczyt portu szeregowego) NIE była testowana ` +
-      `na prawdziwym sprzęcie w środowisku, w którym powstał ten kod — traktuj wynik ostrożnie.`;
+    const isAudio = run.sensor_name.includes("mikrofon");
+    if (isAudio) {
+      return `<b>Live z mikrofonu (dominująca częstotliwość).</b> Każda „próbka” to szczytowa ` +
+        `częstotliwość (FFT) w kolejnym oknie czasowym nagrania, cykl = numer okna (nie realny cykl ` +
+        `silnika). To demonstracja ścieżki audio, NIE zwalidowana metoda diagnostyki po dźwięku. Sam ` +
+        `odczyt z prawdziwego mikrofonu/Bluetooth NIE był testowany w środowisku, w którym powstał ten ` +
+        `kod (sandbox bez sprzętu audio) — traktuj wynik ostrożnie.`;
+    }
+    return `<b>Live z portu szeregowego.</b> Pojedyncza wartość czujnika na próbkę, cykl = kolejny ` +
+      `numer próbki (nie realny cykl silnika). Ta ścieżka NIE była testowana na prawdziwym sprzęcie w ` +
+      `środowisku, w którym powstał ten kod — traktuj wynik ostrożnie.`;
   }
   return "";
 }
@@ -376,6 +401,44 @@ async function loadDevice() {
   } catch (e) { showError(e); }
 }
 
+async function refreshAudioDevices() {
+  const sel = document.getElementById("audio-device");
+  const status = document.getElementById("audio-status");
+  sel.innerHTML = `<option value="">ładowanie…</option>`;
+  status.textContent = "";
+  try {
+    const devices = await fetchJSON("/api/audio/devices");
+    if (!devices.length) {
+      sel.innerHTML = `<option value="">(brak wykrytych urządzeń wejściowych)</option>`;
+    } else {
+      sel.innerHTML = devices.map(d => `<option value="${d.index}">${d.name}</option>`).join("");
+    }
+  } catch (e) {
+    sel.innerHTML = `<option value="">(niedostępne)</option>`;
+    status.textContent = e.message;
+  }
+}
+
+async function loadAudio() {
+  const device = document.getElementById("audio-device").value;
+  if (device === "") { alert("Wybierz urządzenie (najpierw kliknij „Odśwież urządzenia”)."); return; }
+  const duration = document.getElementById("audio-duration").value || 20;
+  const windowS = document.getElementById("audio-window").value || 0.5;
+  showLoading();
+  document.getElementById("audio-status").textContent = `Nagrywanie (${duration}s)…`;
+  try {
+    const run = await fetchJSON(
+      `/api/audio/record?device=${encodeURIComponent(device)}&duration_s=${encodeURIComponent(duration)}&window_s=${encodeURIComponent(windowS)}`,
+      { method: "POST" }
+    );
+    document.getElementById("audio-status").textContent = "";
+    renderRun(run);
+  } catch (e) {
+    document.getElementById("audio-status").textContent = "";
+    showError(e);
+  }
+}
+
 function setupSourceTabs() {
   const buttons = document.querySelectorAll(".src-btn");
   const controlPanels = {
@@ -399,6 +462,23 @@ function setupSourceTabs() {
   document.getElementById("upload-go").addEventListener("click", loadUpload);
   document.getElementById("device-refresh").addEventListener("click", refreshPorts);
   document.getElementById("device-go").addEventListener("click", loadDevice);
+  document.getElementById("audio-refresh").addEventListener("click", refreshAudioDevices);
+  document.getElementById("audio-go").addEventListener("click", loadAudio);
+
+  // podzakladki wewnatrz panelu "Z urzadzenia": port szeregowy / mikrofon audio
+  const devsrcButtons = document.querySelectorAll(".devsrc-btn");
+  const devsrcPanels = {
+    serial: document.getElementById("devsrc-serial"),
+    audio: document.getElementById("devsrc-audio"),
+  };
+  devsrcButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      devsrcButtons.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      Object.values(devsrcPanels).forEach((p) => p.style.display = "none");
+      devsrcPanels[btn.dataset.devsrc].style.display = "flex";
+    });
+  });
 }
 
 setupSourceTabs();

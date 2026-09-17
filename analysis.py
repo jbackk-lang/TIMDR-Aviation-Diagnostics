@@ -268,18 +268,27 @@ def compute_run_from_upload(raw_bytes: bytes, unit: int | None = None) -> Engine
     )
 
 
-def compute_run_from_device_samples(values: list[float], port_label: str | None = None) -> EngineRun:
-    """Live odczyt z urzadzenia zewnetrznego (np. port szeregowy, patrz
-    webapp/app.py /api/serial/read) -- JEDNA wartosc czujnika na probke
-    (nie pelny format C-MAPSS), cykl = kolejny numer probki (1..N). Uzywa
-    DOKLADNIE tego samego rdzenia A/B/C co reszta zrodel.
+def compute_run_from_device_samples(
+    values: list[float],
+    port_label: str | None = None,
+    device_kind: str = "urzadzenie",
+) -> EngineRun:
+    """Live odczyt z urzadzenia zewnetrznego -- JEDNA wartosc czujnika na
+    probke (nie pelny format C-MAPSS), cykl = kolejny numer probki (1..N).
+    Uzywa DOKLADNIE tego samego rdzenia A/B/C co reszta zrodel. Dwa
+    faktyczne zrodla probek w webapp/app.py: port szeregowy
+    (/api/serial/read, wartosc = surowy odczyt czujnika) i mikrofon audio
+    (/api/audio/record, wartosc = dominujaca czestotliwosc na okno, patrz
+    dominant_frequency_series() nizej) -- `device_kind` opisuje, ktore.
 
     UWAGA O ZAKRESIE WERYFIKACJI: ta funkcja sama (parsowanie listy
-    liczb -> A/B/C) jest przetestowana. Kod OBSLUGUJACY faktyczny port
-    szeregowy (w webapp/app.py) zostal napisany wedlug tego samego wzorca
-    co reszta ekosystemu, ale NIE mogl zostac przetestowany na prawdziwym
-    urzadzeniu w tym srodowisku (sandbox bez portow szeregowych) --
-    przetestuj ostroznie na wlasnym sprzecie."""
+    liczb -> A/B/C) jest przetestowana, tak samo jak ekstrakcja cechy
+    audio (dominant_frequency_series(), syntetycznie). Kod OBSLUGUJACY
+    faktyczny port szeregowy / mikrofon (w webapp/app.py) zostal napisany
+    wedlug tego samego wzorca co reszta ekosystemu, ale NIE mogl zostac
+    przetestowany na prawdziwym urzadzeniu w tym srodowisku (sandbox bez
+    portow szeregowych ani sprzetu audio) -- przetestuj ostroznie na
+    wlasnym sprzecie."""
     if len(values) < MIN_SAMPLES:
         raise ValueError(
             f"za malo probek z urzadzenia ({len(values)}) -- potrzeba co "
@@ -288,7 +297,44 @@ def compute_run_from_device_samples(values: list[float], port_label: str | None 
     cycle = np.arange(1, len(values) + 1, dtype=float)
     sensor = np.asarray(values, dtype=float)
     label = (
-        f"czujnik zywy (urzadzenie: {port_label})" if port_label
-        else "czujnik zywy (urzadzenie zewnetrzne)"
+        f"czujnik zywy ({device_kind}: {port_label})" if port_label
+        else f"czujnik zywy ({device_kind})"
     )
     return _analyze_series(cycle, sensor, unit="DEVICE", sensor_name=label, source="device_live")
+
+
+def _dominant_frequency(chunk: np.ndarray, samplerate: int, fmin: float = 50.0) -> float:
+    """Czestotliwosc (Hz) o najwiekszej amplitudzie widma FFT pojedynczego
+    okna audio, pomijajac czestotliwosci ponizej `fmin` (DC/bardzo wolny
+    dryft mikrofonu). Okno Hanninga przed FFT (standardowe wygladzenie
+    przeciekow widma)."""
+    n = len(chunk)
+    if n < 4:
+        return 0.0
+    windowed = chunk * np.hanning(n)
+    spectrum = np.abs(np.fft.rfft(windowed))
+    freqs = np.fft.rfftfreq(n, d=1.0 / samplerate)
+    mask = freqs >= fmin
+    if not np.any(mask):
+        return 0.0
+    idx = np.argmax(spectrum[mask])
+    return float(freqs[mask][idx])
+
+
+def dominant_frequency_series(
+    audio: np.ndarray, samplerate: int, window_s: float = 0.5, fmin: float = 50.0
+) -> list[float]:
+    """Dzieli nagranie audio na kolejne, nienachodzace na siebie okna
+    dlugosci `window_s` i dla kazdego zwraca dominujaca czestotliwosc
+    (patrz _dominant_frequency) -- jedna liczba na okno, ktora jest dalej
+    podawana do compute_run_from_device_samples() jako seria "probek
+    czujnika". Czysta funkcja numpy, BEZ zaleznosci od sprzetu audio --
+    w pelni testowalna syntetycznie (wygeneruj sinusoide o znanej
+    czestotliwosci, sprawdz ze wynik jest bliski tej czestotliwosci;
+    patrz testy)."""
+    win_len = max(1, int(round(window_s * samplerate)))
+    n_windows = len(audio) // win_len
+    return [
+        _dominant_frequency(audio[i * win_len:(i + 1) * win_len], samplerate, fmin=fmin)
+        for i in range(n_windows)
+    ]

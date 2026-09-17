@@ -136,14 +136,22 @@ na czterech różnych źródłach sygnału, wybieranych zakładkami w interfejsi
 | Demo (unit 1) | `GET /api/engine_run` | jedyne realne dane w tym repo (opisane wyżej) |
 | Demo syntetyczne | `GET /api/synthetic_run` | wygenerowany proceduralnie (szum + narastający dryft), jawnie oznaczony jako NIE realne dane — drugi przebieg do sprawdzenia interfejsu na innym kształcie sygnału |
 | Wczytaj plik | `POST /api/upload` | własny plik użytkownika w formacie C-MAPSS (jak `cmapss_fd001_unit1.txt`) |
-| Z urządzenia | `GET /api/serial/ports`, `POST /api/serial/read` | odczyt N próbek (jedna liczba/linia) z portu szeregowego, wymaga `pyserial` |
+| Z urządzenia — port szeregowy | `GET /api/serial/ports`, `POST /api/serial/read` | odczyt N próbek (jedna liczba/linia) z portu szeregowego, wymaga `pyserial` |
+| Z urządzenia — mikrofon (Bluetooth audio) | `GET /api/audio/devices`, `POST /api/audio/record` | nagrywa audio z wybranego urządzenia wejściowego (w tym sparowany zestaw Bluetooth widoczny w systemie jako mikrofon) i liczy dominującą częstotliwość (FFT) w kolejnych oknach czasowych jako serię próbek; wymaga `sounddevice` |
 
-**Zastrzeżenie o ścieżce urządzenia**: kod czytający port szeregowy
-(`webapp/app.py`, `/api/serial/*`) powstał w środowisku bez dostępu do
-portów szeregowych (sandbox) — logika parsowania próbek jest przetestowana
-(`analysis.compute_run_from_device_samples`), ale sam odczyt z prawdziwego
-urządzenia NIE został przetestowany end-to-end. Przetestuj ostrożnie na
-własnym sprzęcie (np. Arduino wysyłający `Serial.println(wartość)`).
+**Zastrzeżenie o ścieżce urządzenia**: kod czytający port szeregowy i
+mikrofon (`webapp/app.py`, `/api/serial/*` i `/api/audio/*`) powstał w
+środowisku bez dostępu do portów szeregowych ani sprzętu audio (sandbox).
+Co JEST przetestowane: parsowanie próbek na wynik A/B/C
+(`analysis.compute_run_from_device_samples`) i ekstrakcja cechy audio
+(`analysis.dominant_frequency_series` — sprawdzona syntetyczną sinusoidą
+o znanej częstotliwości, w tym z dryfem częstotliwości w czasie, patrz
+`test_analysis_extra.py`). Co NIE jest przetestowane: sam odczyt z
+prawdziwego portu szeregowego ani prawdziwego mikrofonu/Bluetooth.
+Przetestuj ostrożnie na własnym sprzęcie (np. Arduino wysyłający
+`Serial.println(wartość)` dla portu szeregowego; dowolny mikrofon lub
+sparowany zestaw Bluetooth widoczny w ustawieniach dźwięku Windows dla
+audio).
 
 ## Pliki
 
@@ -158,4 +166,7 @@ własnym sprzęcie (np. Arduino wysyłający `Serial.println(wartość)`).
   `python3 test_engine_degradation.py`.
 - `webapp/app.py`, `webapp/static/index.html` — dashboard (patrz wyżej,
   sekcja "Cztery źródła danych").
+- `test_analysis_extra.py` — testy funkcji obliczeniowych dla 4 źródeł
+  danych (regresja unit=1, demo syntetyczne, upload, próbki z urządzenia,
+  ekstrakcja dominującej częstotliwości z audio).
 - `run.bat`, `requirements.txt` — uruchomienie dashboardu na Windows.
