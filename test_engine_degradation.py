@@ -37,64 +37,43 @@ cyklach 1-60 (przyjete jako "zdrowy" wczesny okres zycia silnika).
 
 Hipoteza a priori: brak. To pojedynczy realny przypadek (n=1 silnik) -
 traktowac jako demonstracje metody, NIE walidacje statystyczna.
-"""
-import numpy as np
-from timdr_core import TIMDR_EarthquakeCore
 
-
-def first_sustained_alarm(z, run=3, thr=3.0):
-    flag = np.abs(z) > thr
-    for i in range(len(flag) - run + 1):
-        if np.all(flag[i:i + run]):
-            return i
-    return None
+AKTUALIZACJA (2026-09-17): obliczenia przeniesione do analysis.py (dzielone
+z dashboardem webapp/app.py) -- ten plik jest teraz cienkim wywolaniem +
+wypisaniem raportu, zero zmian w matematyce (zweryfikowano identycznosc
+wyniku po refaktoryzacji, patrz commit)."""
+from analysis import compute_engine_run
 
 
 def main():
-    data = np.loadtxt("cmapss_fd001_unit1.txt")
-    cycle = data[:, 1]
-    sensor = data[:, 5 + 3]  # sensor 4 (0-indexed: col5=sensor1)
-    end_of_life = int(cycle[-1])
+    run = compute_engine_run()
+    cycle = run["cycle"]
+    end_of_life = run["end_of_life"]
 
-    print(f"NASA C-MAPSS FD001, unit 1: {len(cycle)} cykli, awaria w cyklu {end_of_life}")
-    print(f"Czujnik: sensor 4 (T50), dobrany obiektywnie (patrz docstring modulu)\n")
+    print(f"NASA C-MAPSS FD001, unit {run['unit']}: {len(cycle)} cykli, awaria w cyklu {end_of_life}")
+    print(f"Czujnik: {run['sensor_name']}, dobrany obiektywnie (patrz docstring modulu)\n")
 
-    # --- Metoda A: baseline SPC na surowej wartosci ---
-    ref_mean_a, ref_std_a = np.mean(sensor[:30]), np.std(sensor[:30])
-    z_a = (sensor - ref_mean_a) / ref_std_a
-    idx_a = first_sustained_alarm(z_a)
-    fp_a = bool(np.any(np.abs(z_a[:60]) > 3.0))
+    a, b, c = run["method_a"], run["method_b"], run["method_c"]
 
-    print("--- Metoda A: baseline SPC (surowa wartosc czujnika) ---")
-    if idx_a is not None:
-        print(f"  alarm od cyklu {int(cycle[idx_a])} -> lead time = {end_of_life - int(cycle[idx_a])} cykli")
+    print(f"--- Metoda {a['name']} ---")
+    if a["alarm_cycle"] is not None:
+        print(f"  alarm od cyklu {a['alarm_cycle']} -> lead time = {a['lead_time']} cykli")
     else:
         print("  brak alarmu")
-    print(f"  falszywy alarm w cyklach 1-60: {fp_a}\n")
+    print(f"  falszywy alarm w cyklach 1-60: {a['false_positive_1_60']}\n")
 
-    # --- Metoda B: TIMDR flow (lokalny trend) ---
-    core = TIMDR_EarthquakeCore(k_neighbors=8)
-    flow_grad = core.flow(cycle, sensor)
-    ref_mean_b, ref_std_b = np.mean(flow_grad[:30]), np.std(flow_grad[:30])
-    z_b = (flow_grad - ref_mean_b) / ref_std_b
-    idx_b = first_sustained_alarm(z_b)
-    fp_b = bool(np.any(np.abs(z_b[:60]) > 3.0))
-
-    print("--- Metoda B: TIMDR flow (lokalny trend LSQ) ---")
-    if idx_b is not None:
-        print(f"  alarm od cyklu {int(cycle[idx_b])} -> lead time = {end_of_life - int(cycle[idx_b])} cykli")
+    print(f"--- Metoda {b['name']} ---")
+    if b["alarm_cycle"] is not None:
+        print(f"  alarm od cyklu {b['alarm_cycle']} -> lead time = {b['lead_time']} cykli")
     else:
         print("  brak alarmu")
-    print(f"  falszywy alarm w cyklach 1-60: {fp_b}\n")
+    print(f"  falszywy alarm w cyklach 1-60: {b['false_positive_1_60']}\n")
 
-    # --- Metoda C: TIMDR anomalies (odstajace wzgledem TRM-median) ---
-    anomaly_points, _residuals, _thr = core.anomalies(cycle, sensor, factor=3.0)
-    print("--- Metoda C: TIMDR anomalies (TRM-median residual) ---")
-    if len(anomaly_points):
-        first = int(cycle[anomaly_points[0]])
-        print(f"  {len(anomaly_points)} wykrytych punktow, pierwszy: cykl {first} "
-              f"-> lead time = {end_of_life - first} cykli")
-        print(f"  wszystkie cykle: {[int(cycle[i]) for i in anomaly_points]}")
+    print(f"--- Metoda {c['name']} ---")
+    if c["anomaly_cycles"]:
+        print(f"  {len(c['anomaly_cycles'])} wykrytych punktow, pierwszy: cykl {c['alarm_cycle']} "
+              f"-> lead time = {c['lead_time']} cykli")
+        print(f"  wszystkie cykle: {c['anomaly_cycles']}")
         print("  UWAGA: to sa IZOLOWANE punkty odstajace, nie trwaly sygnal trendu -")
         print("  bez negatywnej kontroli (dlugi przebieg 'zdrowy' o tym samym poziomie")
         print("  szumu) nie da sie odroznic prawdziwego wczesnego ostrzezenia od")
@@ -103,10 +82,10 @@ def main():
         print("  brak wykrytych anomalii (TRM sledzi powolny dryf, nie flaguje go)")
 
     print("\n--- Podsumowanie (lead time = ile cykli przed awaria wykryto problem) ---")
-    print(f"  A (baseline SPC, surowa wartosc): {end_of_life - int(cycle[idx_a]) if idx_a is not None else 'brak'}")
-    print(f"  B (TIMDR flow, trend):            {end_of_life - int(cycle[idx_b]) if idx_b is not None else 'brak'}")
-    if len(anomaly_points):
-        print(f"  C (TIMDR anomalies, pkt.odstajace, niepotwierdzone): {end_of_life - int(cycle[anomaly_points[0]])}")
+    print(f"  A (baseline SPC, surowa wartosc): {a['lead_time'] if a['lead_time'] is not None else 'brak'}")
+    print(f"  B (TIMDR flow, trend):            {b['lead_time'] if b['lead_time'] is not None else 'brak'}")
+    if c["anomaly_cycles"]:
+        print(f"  C (TIMDR anomalies, pkt.odstajace, niepotwierdzone): {c['lead_time']}")
 
 
 if __name__ == "__main__":

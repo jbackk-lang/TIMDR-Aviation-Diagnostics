@@ -86,11 +86,56 @@ potwierdzenia na kontroli negatywnej, zanim cokolwiek się z niego wywnioskuje.
    PCoE; w tym środowisku zablokowane, do zrobienia na maszynie
    użytkownika.
 
+## Dashboard (2026-09-17)
+
+Lokalna appka FastAPI + dashboard www, ten sam wzorzec architektoniczny co
+Synoptyk-v3/SYNOPTYK-ARCTIC (serwer lokalny, endpoint `/api/*`, ciemny
+motyw wspólny dla całego ekosystemu) — pokazuje wynik opisany wyżej
+("Wynik (jeden przebieg, dane rzeczywiste)") jako trzy wykresy zamiast
+tabeli w README:
+
+- Metoda A (surowa wartość czujnika) z pasmem bazowym ±3σ i zaznaczonym
+  cyklem alarmu.
+- Metoda B (`flow`, lokalny trend) analogicznie.
+- Metoda C (`anomalies`) z zaznaczonymi punktami odstającymi — panel
+  jawnie powtarza zastrzeżenie o braku kontroli negatywnej (patrz wyżej),
+  nie tylko w README, żeby ktoś patrzący WYŁĄCZNIE na dashboard też je
+  zobaczył.
+
+Obliczenia (`analysis.py`) są WYDZIELONE i dzielone 1:1 między
+`test_engine_degradation.py` (skrypt konsolowy) a `webapp/app.py`
+(dashboard) — zero duplikacji logiki, zweryfikowane identycznym wynikiem
+po refaktoryzacji (te same cykle alarmów/lead time/punkty anomalii co
+przed wydzieleniem).
+
+**Uruchomienie:** `run.bat` (Windows, instaluje `requirements.txt` i
+otwiera `http://127.0.0.1:8010` w przeglądarce) albo ręcznie:
+
+```
+pip install -r requirements.txt
+python -m uvicorn webapp.app:app --host 127.0.0.1 --port 8010
+```
+
+Dane są statyczne (jeden plik lokalny) — dashboard NIE wymaga połączenia
+z internetem, w odróżnieniu od Synoptyk-v3/SYNOPTYK-ARCTIC.
+
+**Ograniczenie, jawnie**: dashboard pokazuje TYLKO unit 1 (jedyne realne
+dane w tym repo — patrz "Co jest tu realne" wyżej). `/api/engine_run`
+przyjmuje parametr `?unit=`, ale każda wartość poza `1` zwraca czytelny
+HTTP 400, nie cichy/zmyślony wynik — gotowe pod przyszłe rozszerzenie na
+100 silników (patrz "Jak zrobić to porządnie"), nie obietnica, że już
+działa.
+
 ## Pliki
 
 - `cmapss_fd001_unit1.txt` — realne dane NASA C-MAPSS FD001, unit 1 (192
   cykle × 26 kolumn: unit, cycle, 3×operational setting, 21×sensor).
 - `timdr_core.py` — kopia 1:1 `timdr_core_earthquake.py` z
   `TIMDR-Earthquake-Core` (bez zmian logiki).
-- `test_engine_degradation.py` — test opisany wyżej, uruchamialny wprost:
+- `analysis.py` — wspólny rdzeń obliczeniowy metod A/B/C (patrz
+  "Dashboard" wyżej), używany zarówno przez `test_engine_degradation.py`,
+  jak i `webapp/app.py`.
+- `test_engine_degradation.py` — skrypt opisany wyżej, uruchamialny wprost:
   `python3 test_engine_degradation.py`.
+- `webapp/app.py`, `webapp/static/index.html` — dashboard (patrz wyżej).
+- `run.bat`, `requirements.txt` — uruchomienie dashboardu na Windows.

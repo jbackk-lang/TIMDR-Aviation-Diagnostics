@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>TIMDR-Aviation-Diagnostics — dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* Ten sam ciemny motyw/paleta co Synoptyk-v3 / SYNOPTYK-ARCTIC —
+     swiadoma spojnosc wizualna calego ekosystemu, nie przypadek. */
+  :root {
+    --bg: #0b0f14;
+    --panel: #111823;
+    --panel-border: #1f2b3a;
+    --text: #d8e2ec;
+    --muted: #7b8ca0;
+    --accent: #4fd1c5;
+    --accent-dim: #2b6f68;
+    --warn-bg: #2a1a0a;
+    --warn-border: #7a4a12;
+    --warn-text: #f0b060;
+    --ok: #4fd18a;
+    --bad: #e0616b;
+    --band: rgba(79, 209, 197, 0.10);
+    --alarm-line: #e0616b;
+    --unconfirmed: #f0b060;
+    --mono: "Consolas", "Menlo", "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); margin: 0; padding: 24px; line-height: 1.5; }
+  h1 { font-size: 20px; margin: 0 0 4px 0; }
+  h2 { font-size: 15px; margin: 0 0 12px 0; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+  .warn-banner { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); padding: 12px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 20px; }
+  .warn-banner b { color: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--panel-border); }
+  th:first-child, td:first-child { text-align: left; color: var(--text); }
+  th { color: var(--muted); font-weight: normal; }
+  .fp-yes { color: var(--bad); }
+  .fp-no { color: var(--ok); }
+  .method-c-note { color: var(--unconfirmed); }
+  .chart-wrap { width: 100%; }
+  svg.chart { width: 100%; height: auto; display: block; background: #0d131b; border-radius: 4px; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .legend span.dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  footer { color: var(--muted); font-size: 11px; margin-top: 24px; border-top: 1px solid var(--panel-border); padding-top: 12px; }
+  a { color: var(--accent); }
+  .loading, .error { color: var(--muted); padding: 20px 0; }
+  .error { color: var(--bad); }
+</style>
+</head>
+<body>
+
+<h1>TIMDR-Aviation-Diagnostics — dashboard</h1>
+<div class="sub">Transfer TIMDR-Core (1:1 z TIMDR-Earthquake-Core) do diagnostyki lotniczej/silnikowej — realne dane NASA C-MAPSS FD001, unit 1.</div>
+
+<div id="warn-banner" class="warn-banner">Ładowanie danych…</div>
+
+<div class="panel" id="summary-panel">
+  <h2>Podsumowanie: 3 metody, ten sam czujnik</h2>
+  <div id="summary-table"><div class="loading">Ładowanie…</div></div>
+</div>
+
+<div class="panel">
+  <h2>Metoda A — baseline SPC (surowa wartość czujnika)</h2>
+  <div class="chart-wrap"><svg class="chart" id="chart-a" viewBox="0 0 900 260" role="img" aria-label="Surowa wartość czujnika sensor 4 z pasmem bazowym i cyklem alarmu"></svg></div>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--accent)"></span>surowa wartość czujnika</span>
+    <span><span class="dot" style="background:var(--band)"></span>pasmo bazowe (±3σ z cykli 1–30)</span>
+    <span><span class="dot" style="background:var(--alarm-line)"></span>cykl alarmu</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Metoda B — TIMDR flow (lokalny trend)</h2>
+  <div class="chart-wrap"><svg class="chart" id="chart-b" viewBox="0 0 900 260" role="img" aria-label="Lokalny gradient TIMDR flow z pasmem bazowym i cyklem alarmu"></svg></div>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--accent)"></span>flow_grad (gradient LSQ, k=8)</span>
+    <span><span class="dot" style="background:var(--band)"></span>pasmo bazowe (±3σ z cykli 1–30)</span>
+    <span><span class="dot" style="background:var(--alarm-line)"></span>cykl alarmu</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Metoda C — TIMDR anomalies (odstające, NIEPOTWIERDZONE)</h2>
+  <div class="chart-wrap"><svg class="chart" id="chart-c" viewBox="0 0 900 260" role="img" aria-label="Residua TRM-median z zaznaczonymi punktami anomalii"></svg></div>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--accent)"></span>residuum (s − TRM-mediana)</span>
+    <span><span class="dot" style="background:var(--unconfirmed)"></span>wykryte punkty odstające</span>
+  </div>
+  <p class="method-c-note" style="font-size:12px; margin-top:10px;">
+    To są IZOLOWANE punkty odstające, nie trwały sygnał trendu. Bez kontroli negatywnej
+    (długi przebieg „zdrowy” o tym samym poziomie szumu czujnika) nie da się odróżnić
+    prawdziwego wczesnego ostrzeżenia od zwykłej stopy fałszywych alarmów tej metody —
+    traktuj to jako obiecujący trop, nie potwierdzony wynik.
+  </p>
+</div>
+
+<footer>
+  Dane: NASA C-MAPSS FD001, unit 1 (192 cykle, awaria w cyklu 192) — jedyny realny przebieg
+  dostępny w tym środowisku (patrz README, sekcja „Co jest tu realne”). n=1 — to demonstracja
+  metody, NIE walidacja statystyczna. Kod: <a href="https://github.com/jbackk-lang/TIMDR-Aviation-Diagnostics" target="_blank">TIMDR-Aviation-Diagnostics</a>.
+</footer>
+
+<script>
+async function fetchRun() {
+  const res = await fetch("/api/engine_run");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+function fmtLead(v) {
+  return v === null || v === undefined ? "brak alarmu" : `${v} cykli`;
+}
+
+function renderSummary(run) {
+  const rows = [run.method_a, run.method_b, run.method_c];
+  let html = `<table><thead><tr>
+    <th>Metoda</th><th>Cykl alarmu</th><th>Lead time</th><th>Fałszywy alarm (cykle 1–60)</th>
+  </tr></thead><tbody>`;
+  for (const m of rows) {
+    const fp = m.false_positive_1_60;
+    const fpLabel = m.name.startsWith("C") ? "brak formalnej kontroli" : (fp ? "TAK" : "nie");
+    const fpClass = m.name.startsWith("C") ? "" : (fp ? "fp-yes" : "fp-no");
+    html += `<tr>
+      <td>${m.name}</td>
+      <td>${m.alarm_cycle === null ? "—" : m.alarm_cycle}</td>
+      <td>${fmtLead(m.lead_time)}</td>
+      <td class="${fpClass}">${fpLabel}</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  document.getElementById("summary-table").innerHTML = html;
+}
+
+// --- prosty wykres liniowy SVG, zero zaleznosci zewnetrznych (ten sam
+// wybor co Synoptyk-v3/SYNOPTYK-ARCTIC: rysujemy sami, bez biblioteki) ---
+function drawLineChart(svgId, xs, ys, opts) {
+  const svg = document.getElementById(svgId);
+  svg.innerHTML = "";
+  const W = 900, H = 260, padL = 50, padR = 20, padT = 16, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  if (opts.band) {
+    yMin = Math.min(yMin, opts.band[0]);
+    yMax = Math.max(yMax, opts.band[1]);
+  }
+  const yPad = (yMax - yMin) * 0.08 || 1;
+  yMin -= yPad; yMax += yPad;
+
+  const xToPx = (x) => padL + ((x - xMin) / (xMax - xMin || 1)) * plotW;
+  const yToPx = (y) => padT + plotH - ((y - yMin) / (yMax - yMin || 1)) * plotH;
+
+  const ns = "http://www.w3.org/2000/svg";
+  const addEl = (tag, attrs) => {
+    const el = document.createElementNS(ns, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    svg.appendChild(el);
+    return el;
+  };
+
+  // pasmo bazowe (referencja +/- k*std)
+  if (opts.band) {
+    addEl("rect", {
+      x: padL, y: yToPx(opts.band[1]),
+      width: plotW, height: Math.max(0, yToPx(opts.band[0]) - yToPx(opts.band[1])),
+      fill: "var(--band)",
+    });
+  }
+
+  // osie
+  addEl("line", { x1: padL, y1: padT, x2: padL, y2: padT + plotH, stroke: "#2a3a4d" });
+  addEl("line", { x1: padL, y1: padT + plotH, x2: padL + plotW, y2: padT + plotH, stroke: "#2a3a4d" });
+
+  // etykiety osi X (skrajne + srodek)
+  [xMin, Math.round((xMin + xMax) / 2), xMax].forEach((v) => {
+    addEl("text", { x: xToPx(v), y: H - 8, fill: "#7b8ca0", "font-size": "11px", "text-anchor": "middle" }).textContent = `cykl ${v}`;
+  });
+  // etykiety osi Y (min/max)
+  [yMin + yPad, yMax - yPad].forEach((v) => {
+    addEl("text", { x: padL - 6, y: yToPx(v) + 4, fill: "#7b8ca0", "font-size": "11px", "text-anchor": "end" }).textContent = v.toFixed(2);
+  });
+
+  // linia danych
+  const points = xs.map((x, i) => `${xToPx(x)},${yToPx(ys[i])}`).join(" ");
+  addEl("polyline", { points, fill: "none", stroke: "var(--accent)", "stroke-width": "1.6" });
+
+  // pionowa linia alarmu
+  if (opts.alarmCycle !== null && opts.alarmCycle !== undefined) {
+    const ax = xToPx(opts.alarmCycle);
+    addEl("line", { x1: ax, y1: padT, x2: ax, y2: padT + plotH, stroke: "var(--alarm-line)", "stroke-width": "1.5", "stroke-dasharray": "4,3" });
+    addEl("text", { x: ax, y: padT + 12, fill: "var(--alarm-line)", "font-size": "11px", "text-anchor": "middle" }).textContent = `alarm: cykl ${opts.alarmCycle}`;
+  }
+
+  // punkty anomalii (rozproszenie)
+  if (opts.markerCycles && opts.markerCycles.length) {
+    for (const c of opts.markerCycles) {
+      const idx = xs.indexOf(c);
+      if (idx === -1) continue;
+      addEl("circle", { cx: xToPx(c), cy: yToPx(ys[idx]), r: 4, fill: "var(--unconfirmed)", stroke: "#0d131b", "stroke-width": "1" });
+    }
+  }
+}
+
+async function main() {
+  let run;
+  try {
+    run = await fetchRun();
+  } catch (e) {
+    document.getElementById("warn-banner").outerHTML =
+      `<div class="error">Błąd ładowania danych: ${e.message}</div>`;
+    document.getElementById("summary-table").innerHTML = "";
+    return;
+  }
+
+  document.getElementById("warn-banner").innerHTML =
+    `<b>n=1 (jeden silnik).</b> To jest demonstracja metody na pojedynczym, realnym przebiegu ` +
+    `run-to-failure, NIE walidacja statystyczna. Metoda C (anomalies) daje najwcześniejszy sygnał, ` +
+    `ale jest niepotwierdzona bez kontroli negatywnej — patrz panel niżej i README repo.`;
+
+  renderSummary(run);
+
+  const cycle = run.cycle;
+
+  const a = run.method_a;
+  // pasmo A liczone wprost z surowych danych (mean/std pierwszych 30 cykli) —
+  // ten sam przelicznik co server-side w analysis.py (referencja zamrozona z cykli 1-30)
+  const ref30A = run.sensor_raw.slice(0, 30);
+  const meanA = ref30A.reduce((s, v) => s + v, 0) / ref30A.length;
+  const stdA = Math.sqrt(ref30A.reduce((s, v) => s + (v - meanA) ** 2, 0) / ref30A.length);
+  drawLineChart("chart-a", cycle, run.sensor_raw, {
+    band: [meanA - 3 * stdA, meanA + 3 * stdA],
+    alarmCycle: a.alarm_cycle,
+  });
+
+  const b = run.method_b;
+  // flow_grad nie jest bezposrednio w payloadzie (tylko z-score) -- do
+  // wykresu B uzywamy z-score wprost (ta sama informacja o ksztalcie
+  // przebiegu, jednostki inne niz surowy sygnal, ale to wlasnie to, na
+  // czym dziala reguła alarmu metody B).
+  const bandB = [-3, 3];
+  drawLineChart("chart-b", cycle, b.series, {
+    band: bandB,
+    alarmCycle: b.alarm_cycle,
+  });
+
+  const c = run.method_c;
+  drawLineChart("chart-c", cycle, c.series, {
+    markerCycles: c.anomaly_cycles,
+  });
+}
+
+main();
+</script>
+</body>
+</html>
