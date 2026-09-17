@@ -22,14 +22,21 @@ if exist "venv\Scripts\activate.bat" (
 )
 
 echo.
-echo [1/2] Instalacja pakietow pip...
-python -m pip install --upgrade pip --disable-pip-version-check
-python -m pip install -r requirements.txt
+echo [1/2] Sprawdzanie pakietow...
+python -c "import fastapi, uvicorn, numpy" 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo [OK] Pakiety juz zainstalowane - pomijam pip install ^(oszczedza czas,
+    echo      pip laczy sie z siecia PyPI nawet gdy nic nie trzeba instalowac^).
+) else (
+    echo [INFO] Brakuje pakietow - instaluje z requirements.txt...
+    python -m pip install --upgrade pip --disable-pip-version-check
+    python -m pip install -r requirements.txt
 
-if %ERRORLEVEL% NEQ 0 (
-    echo [BLAD] Instalacja pakietow nie powiodla sie.
-    pause
-    exit /b 1
+    if %ERRORLEVEL% NEQ 0 (
+        echo [BLAD] Instalacja pakietow nie powiodla sie.
+        pause
+        exit /b 1
+    )
 )
 
 echo.
