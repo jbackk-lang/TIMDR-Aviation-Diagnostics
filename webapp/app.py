@@ -131,10 +131,10 @@ def api_synthetic_run(seed: int = 42):
 
 
 @app.post("/api/upload")
-async def api_upload(file: UploadFile = File(...), unit: Optional[int] = None):
+async def api_upload(file: UploadFile = File(...), unit: Optional[int] = None, sensor: Optional[int] = None):
     raw = await file.read()
     try:
-        return compute_run_from_upload(raw, unit=unit)
+        return compute_run_from_upload(raw, unit=unit, sensor=sensor)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

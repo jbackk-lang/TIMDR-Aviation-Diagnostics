@@ -135,7 +135,7 @@ na czterech różnych źródłach sygnału, wybieranych zakładkami w interfejsi
 |---|---|---|
 | Demo (unit 1) | `GET /api/engine_run` | jedyne realne dane w tym repo (opisane wyżej) |
 | Demo syntetyczne | `GET /api/synthetic_run` | wygenerowany proceduralnie (szum + narastający dryft), jawnie oznaczony jako NIE realne dane — drugi przebieg do sprawdzenia interfejsu na innym kształcie sygnału |
-| Wczytaj plik | `POST /api/upload` | własny plik użytkownika w formacie C-MAPSS (jak `cmapss_fd001_unit1.txt`) |
+| Wczytaj plik | `POST /api/upload` | własny plik użytkownika w formacie C-MAPSS (jak `cmapss_fd001_unit1.txt`) — czujnik do analizy wybierany AUTOMATYCZNIE (patrz niżej), albo podaj `?sensor=N` (1..21) żeby wymusić konkretny |
 | Z urządzenia — port szeregowy | `GET /api/serial/ports`, `POST /api/serial/read` | odczyt N próbek (jedna liczba/linia) z portu szeregowego, wymaga `pyserial` |
 | Z urządzenia — mikrofon (Bluetooth audio) | `GET /api/audio/devices`, `POST /api/audio/record` | nagrywa audio z wybranego urządzenia wejściowego (w tym sparowany zestaw Bluetooth widoczny w systemie jako mikrofon) i liczy dominującą częstotliwość (FFT) w kolejnych oknach czasowych jako serię próbek; wymaga `sounddevice` |
 
@@ -152,6 +152,27 @@ Przetestuj ostrożnie na własnym sprzęcie (np. Arduino wysyłający
 `Serial.println(wartość)` dla portu szeregowego; dowolny mikrofon lub
 sparowany zestaw Bluetooth widoczny w ustawieniach dźwięku Windows dla
 audio).
+
+### Auto-wybór czujnika dla wgranego pliku (2026-09-22)
+
+`compute_engine_run()` (jedyne realne dane, unit=1) zawsze używa sensora 4
+— to zamrożony, już zweryfikowany wynik (patrz "Metodologia" wyżej), nie
+zmieniamy go. Ale `POST /api/upload` przyjmuje PLIK OD UŻYTKOWNIKA, który
+może pochodzić z zupełnie innego silnika/jednostki — sensor 4 nie ma tam
+żadnego uprzywilejowanego statusu. Dlatego domyślnie (bez `?sensor=N`)
+czujnik do analizy jest wybierany automatycznie: `analysis.select_informative_sensor()`
+liczy dla wszystkich 21 czujników ten sam z-score przesunięcia średniej
+(ostatnie 30 cykli względem pierwszych 30, znormalizowane odchyleniem
+standardowym okna referencyjnego), którym pierwotnie RĘCZNIE znaleziono
+sensor 4 dla unit=1 — teraz to ta sama metoda, tylko przeniesiona do
+kodu i uruchamiana na każdym wgranym pliku z osobna. Zweryfikowane: na
+danych unit=1 auto-wybór odtwarza dokładnie sensor 4 (patrz
+`test_select_informative_sensor_reproduces_sensor4_on_real_unit1` w
+`test_analysis_extra.py`) — to potwierdzenie zgodności z już znanym
+wynikiem, nie nowe odkrycie. Odpowiedź `/api/upload` zawiera
+`sensor_number` (który czujnik faktycznie użyto) i `sensor_scores`
+(wszystkie 21 wyników z-score, żeby wybór był audytowalny, nie czarną
+skrzynką) — `sensor_scores` jest `null`, gdy `sensor` podano ręcznie.
 
 ## Pliki
 

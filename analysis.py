@@ -45,6 +45,63 @@ DEFAULT_DATA_PATH = os.path.join(_THIS_DIR, "cmapss_fd001_unit1.txt")
 SENSOR4_COL = 5 + 3  # sensor 4 (0-indexed w formacie C-MAPSS: col5=sensor1)
 MIN_SAMPLES = 30     # dlugosc okna referencyjnego (cykle 1-30) -- ten sam
                       # wymog dla wszystkich zrodel danych
+N_SENSORS = 21        # C-MAPSS: sensory 1..21, kolumny SENSOR_COL(1)..SENSOR_COL(21)
+
+
+def _sensor_col(sensor_number: int) -> int:
+    """Kolumna (0-indexed) danego numeru czujnika C-MAPSS (1..21). sensor 4
+    -> SENSOR4_COL, jw."""
+    return 5 + (sensor_number - 1)
+
+
+def select_informative_sensor(
+    cycle: np.ndarray, all_sensors: np.ndarray, reference_window: int = MIN_SAMPLES
+) -> tuple[int, dict[int, float]]:
+    """Automatyczny wybor NAJBARDZIEJ INFORMATYWNEGO czujnika (2026-09-22,
+    "tu tez" -- ten sam duch co auto-wybor pasma rezonansu w
+    TIMDR-Industrial-Predict: zastapienie recznie dobranej stalej [tu:
+    SENSOR4_COL, sensor 4] czyms wyliczanym z danych referencyjnych).
+
+    Metoda IDENTYCZNA z ta opisana w README ("Metodologia") jako sposob, w
+    jaki oryginalnie wybrano sensor 4 dla unit=1 -- tu PRZENIESIONA z
+    jednorazowej recznej analizy do wielokrotnie uzywalnego kodu: dla
+    kazdego z 21 czujnikow, z-score przesuniecia sredniej miedzy OSTATNIM a
+    PIERWSZYM oknem `reference_window` cykli, wzgledem odchylenia
+    standardowego w oknie poczatkowym --
+        z_i = |mean(s_i[-w:]) - mean(s_i[:w])| / std(s_i[:w])
+    (std~0 w oknie poczatkowym -> ten czujnik pomijany, dzielenie przez ~0
+    jest niesensowne/niestabilne, nie automatycznie "najbardziej
+    informatywny"). Zwraca (numer_najlepszego_czujnika, wszystkie_z_score) -
+    PELNY slownik wszystkich 21 wynikow jest zwracany celowo (nie tylko
+    zwyciezca), zeby wybor byl audytowalny, nie czarna skrzynka.
+
+    UCZCIWE ZASTRZEZENIE: ten sam algorytm zastosowany do danych unit=1
+    (jedyne realne dane w tym repo) MUSI zwrocic sensor=4, bo to jest
+    dokladnie ta metoda, ktora go tam znalazla recznie (patrz
+    test_select_informative_sensor_reproduces_sensor4_on_real_unit1 w
+    test_analysis_extra.py) - to jest odtworzenie znanego wyniku, nie nowe
+    odkrycie. Wartosc tej funkcji jest w tym, ze dziala TEZ na danych, ktore
+    NIE sa unit=1 (upload uzytkownika z innym silnikiem/jednostka), gdzie
+    "sensor 4" nie ma zadnej gwarancji bycia najbardziej informatywnym."""
+    n = all_sensors.shape[0]
+    w = min(reference_window, n)
+    if w < 2:
+        raise ValueError(f"za malo probek ({n}) do wyboru czujnika (potrzeba >= 2)")
+
+    scores: dict[int, float] = {}
+    for sensor_num in range(1, N_SENSORS + 1):
+        col = _sensor_col(sensor_num) - 5  # all_sensors ma TYLKO kolumny czujnikow, 0-indexed od sensor1
+        series = all_sensors[:, col]
+        first = series[:w]
+        last = series[-w:]
+        std_first = np.std(first)
+        if std_first <= 1e-12:
+            scores[sensor_num] = 0.0
+            continue
+        scores[sensor_num] = float(abs(np.mean(last) - np.mean(first)) / std_first)
+
+    best_sensor = max(scores, key=lambda k: scores[k])
+    return best_sensor, scores
 
 
 def first_sustained_alarm(z: np.ndarray, run: int = 3, thr: float = 3.0) -> int | None:
@@ -65,7 +122,7 @@ class MethodResult(TypedDict):
     anomaly_cycles: list[int]    # tylko metoda C -- wszystkie wykryte cykle
 
 
-class EngineRun(TypedDict):
+class EngineRun(TypedDict, total=False):
     unit: int | str
     cycle: list[int]
     sensor_raw: list[float]      # surowe wartosci czujnika
@@ -76,6 +133,8 @@ class EngineRun(TypedDict):
     method_a: MethodResult
     method_b: MethodResult
     method_c: MethodResult
+    sensor_number: int           # tylko source="upload" - numer czujnika (1..21) faktycznie uzyty
+    sensor_scores: dict[int, float] | None  # tylko source="upload" z auto-wyborem - patrz select_informative_sensor
 
 
 def _analyze_series(
@@ -218,13 +277,26 @@ def compute_synthetic_run(seed: int = 42, n_cycles: int = 180) -> EngineRun:
     )
 
 
-def compute_run_from_upload(raw_bytes: bytes, unit: int | None = None) -> EngineRun:
+def compute_run_from_upload(
+    raw_bytes: bytes, unit: int | None = None, sensor: int | None = None
+) -> EngineRun:
     """Wlasny plik uzytkownika w TYM SAMYM formacie co cmapss_fd001_unit1.txt
     (C-MAPSS: unit, cycle, 3x nastawa operacyjna, 21x czujnik, wartosci
     rozdzielone spacjami/tabulatorami, min. 26 kolumn). Jesli plik zawiera
     dokladnie jedna jednostke (unit), parametr `unit` mozna pominac -- w
     przeciwnym razie jest WYMAGANY (nie zgadujemy, ktory silnik user
-    chcial), inaczej jawny blad z lista dostepnych jednostek."""
+    chcial), inaczej jawny blad z lista dostepnych jednostek.
+
+    `sensor` (2026-09-22, "tu tez"): numer czujnika 1..21 do analizy. Gdy
+    `None` (domyslnie), czujnik jest wybierany AUTOMATYCZNIE przez
+    `select_informative_sensor()` (ten sam z-score przesuniecia sredniej,
+    ktorym pierwotnie recznie znaleziono sensor 4 dla unit=1 -- patrz
+    docstring tamtej funkcji). W ODROZNIENIU od compute_engine_run()
+    (ktora zawsze uzywa SENSOR4_COL, bo to jest jedyne realne, juz
+    zweryfikowane referencyjne demo tego repo, patrz README), tu NIE MA
+    zadnej gwarancji, ze wgrany plik pochodzi z tego samego typu silnika co
+    unit=1 -- sensor 4 nie ma tu zadnego uprzywilejowanego statusu, wiec
+    domyslne zachowanie to auto-wybor, nie sztywna stala."""
     try:
         text = raw_bytes.decode("utf-8")
     except UnicodeDecodeError as e:
@@ -260,12 +332,26 @@ def compute_run_from_upload(raw_bytes: bytes, unit: int | None = None) -> Engine
     rows = data[data[:, 0] == unit]
     rows = rows[np.argsort(rows[:, 1])]
     cycle = rows[:, 1]
-    sensor = rows[:, SENSOR4_COL]
-    return _analyze_series(
-        cycle, sensor, unit=unit,
-        sensor_name="sensor 4 (T50) — z pliku uzytkownika (zaklada format C-MAPSS)",
+
+    sensor_scores: dict[int, float] | None = None
+    if sensor is None:
+        all_sensor_cols = rows[:, 5:5 + N_SENSORS]
+        sensor, sensor_scores = select_informative_sensor(cycle, all_sensor_cols)
+        name_suffix = f"auto-wybrany, z-score={sensor_scores[sensor]:.2f}"
+    else:
+        if not (1 <= sensor <= N_SENSORS):
+            raise ValueError(f"sensor={sensor} poza zakresem 1..{N_SENSORS}")
+        name_suffix = "wybrany recznie"
+
+    sensor_series = rows[:, _sensor_col(sensor)]
+    result = _analyze_series(
+        cycle, sensor_series, unit=unit,
+        sensor_name=f"sensor {sensor} ({name_suffix}) — z pliku uzytkownika (zaklada format C-MAPSS)",
         source="upload",
     )
+    result["sensor_number"] = sensor
+    result["sensor_scores"] = sensor_scores
+    return result
 
 
 def compute_run_from_device_samples(

@@ -13,11 +13,14 @@ import numpy as np
 import pytest
 
 from analysis import (
+    DEFAULT_DATA_PATH,
+    N_SENSORS,
     compute_engine_run,
     compute_run_from_device_samples,
     compute_run_from_upload,
     compute_synthetic_run,
     dominant_frequency_series,
+    select_informative_sensor,
 )
 
 
@@ -38,6 +41,60 @@ def test_compute_engine_run_unit1_unchanged():
 def test_compute_engine_run_rejects_other_units():
     with pytest.raises(ValueError, match="niewspierane"):
         compute_engine_run(unit=2)
+
+
+def test_select_informative_sensor_reproduces_sensor4_on_real_unit1():
+    """2026-09-22 ('tu tez'): select_informative_sensor jest przeniesieniem
+    JUZ ISTNIEJACEJ recznej metodologii (README, sekcja 'Metodologia') do
+    wielokrotnie uzywalnego kodu, nie nowym odkryciem -- musi odtworzyc
+    dokladnie ten sam wybor (sensor 4), ktory README opisuje jako znaleziony
+    recznie i potwierdzony literatura (~14 'informative sensors')."""
+    data = np.loadtxt(DEFAULT_DATA_PATH)
+    cycle = data[:, 1]
+    all_sensors = data[:, 5:5 + N_SENSORS]
+    best, scores = select_informative_sensor(cycle, all_sensors)
+    assert best == 4
+    assert len(scores) == N_SENSORS
+    assert scores[4] == max(scores.values())
+
+
+def test_upload_auto_selects_most_informative_sensor(tmp_path):
+    """Gdy `sensor` nie jest podany, compute_run_from_upload wybiera go
+    automatycznie (nie zawsze sensor 4) -- tu jawnie wstrzykujemy silny
+    dryft na sensorze 10, zeby sprawdzic, ze auto-wybor faktycznie zalezy
+    od DANYCH pliku, nie jest cicho zignorowany na rzecz sztywnej stalej."""
+    rng = np.random.default_rng(0)
+    n = 40
+    rows = []
+    for cyc in range(1, n + 1):
+        vals = [1.0] * 3
+        sensors = list(rng.normal(600, 1.0, size=21))
+        if cyc > 25:
+            sensors[9] += 50.0  # silny skok na sensorze 10 (index 9, 0-indexed)
+        rows.append(f"1 {cyc} " + " ".join(map(str, vals)) + " " + " ".join(map(str, sensors)))
+    p = tmp_path / "drift_sensor10.txt"
+    p.write_text("\n".join(rows), encoding="utf-8")
+
+    r = compute_run_from_upload(p.read_bytes())
+    assert r["sensor_number"] == 10
+    assert r["sensor_scores"] is not None
+    assert "auto-wybrany" in r["sensor_name"]
+
+
+def test_upload_explicit_sensor_overrides_auto_select(tmp_path):
+    rng = np.random.default_rng(0)
+    rows = []
+    for cyc in range(1, 41):
+        vals = [1.0] * 3
+        sensors = list(rng.normal(600, 1.0, size=21))
+        rows.append(f"1 {cyc} " + " ".join(map(str, vals)) + " " + " ".join(map(str, sensors)))
+    p = tmp_path / "one_unit_explicit.txt"
+    p.write_text("\n".join(rows), encoding="utf-8")
+
+    r = compute_run_from_upload(p.read_bytes(), sensor=7)
+    assert r["sensor_number"] == 7
+    assert r["sensor_scores"] is None
+    assert "wybrany recznie" in r["sensor_name"]
 
 
 def test_synthetic_run_is_labeled_and_deterministic():
