@@ -1,5 +1,8 @@
 """Karty twierdzeń README (TIMDR-Aviation-Diagnostics) dla tools/claim_audit.py.
-Reguły: docs/audit/CLAIM_AUDIT_PREREG.md. Przeliczenia: docs/audit/RECOMPUTE_AV.json (recompute_av.py).
+Reguły: docs/audit/CLAIM_AUDIT_PREREG.md + CLAIM_AUDIT_ADDENDUM_1.md. Przeliczenia: docs/audit/RECOMPUTE_AV.json.
+
+v1.1 (po przebiegu 1 i poprawce README): nowe cytaty V6, V7, V19; V18 oceniane wzorcem alarmów online; nowe karty V21
+(odtwarzanie na bieżąco) i V22 (przyszłe cykle w B/C); R6 z ujawnieniem; „zawsze używa” pominięte w R7b.
 """
 from __future__ import annotations
 
@@ -163,6 +166,50 @@ def v_drift():
                   f"pierwszej trzeciej {d['slope_ratio']:.1f}×".replace(".", ","), "R9, czujnik 4, cykle 31–192")
 
 
+def v_select_v11():
+    s = rc()["sensors"]
+    return R(s["top"] == 4, f"największy z-score: czujnik {s['top']} (z = {s['z'][str(s['top'])]:.1f})".replace(".", ","),
+             "R13: selekcja na wyniku opisana w README")
+
+
+def v_literature_v11():
+    s = rc()["sensors"]
+    ok = s["top14_equals_literature"] and len(s["constant"]) == 7 and s["n_scored"] == 14
+    return R(ok, f"niestałe: {sorted(s['top14'])}; stałe: {s['constant']}", "R10")
+
+
+def v_drift_v11():
+    d = rc()["drift_shape"]
+    ok = d["dbic_lin_minus_quad"] > 10 and d["curvature"] > 0 and abs(d["slope_ratio"] - 27) <= 0.15 * 27
+    return R(ok, f"ΔBIC {d['dbic_lin_minus_quad']:.1f}, nachylenie ostatniej/pierwszej trzeciej {d['slope_ratio']:.1f}×"
+             .replace(".", ","), "R9")
+
+
+def v_a_better_v11():
+    r, o = rc()["repo_run"], rc()["online"]
+    ok = r["method_a"]["lead"] > r["method_b"]["lead"] and o["A"]["share_after_first"] >= 0.9 \
+        and o["B"]["share_after_first"] < 0.25 and o["C"]["share_after_first"] < 0.25
+    return R(ok, f"wstecznie lead A {r['method_a']['lead']} vs B {r['method_b']['lead']}; online odsetek cykli z alarmem "
+             f"po pierwszym: A {o['A']['share_after_first']:.2f}, B {o['B']['share_after_first']:.2f}, "
+             f"C {o['C']['share_after_first']:.2f}".replace(".", ","), "„pewniejszy” = trwały alarm online")
+
+
+def v_online():
+    o = rc()["online"]
+    ok = o["A"]["cycles"][0] == 147 and 192 - 147 == 45 and o["A"]["share_after_first"] >= 0.9 \
+        and o["B"]["cycles"][0] == o["C"]["cycles"][0] == 87 and o["B"]["n"] == 8 and o["C"]["n"] == 5 \
+        and o["B"]["share_after_first"] < 0.25 and o["C"]["share_after_first"] < 0.25
+    return R(ok, f"A od {o['A']['cycles'][0]} ({o['A']['n']} cykli); B {o['B']['cycles']}; C {o['C']['cycles']}",
+             "odtwarzanie online (aneks 1)")
+
+
+def v_future():
+    core = src("timdr_core.py")
+    ok = "lo, hi = self._nearest_k_bounds(t, i, k)" in core and "smooth = self.trm(t, s)" in core \
+        and "mad = np.median(np.abs(residuals)) * self.mad_scale" in core
+    return R(ok, "flow/trm: okno k najbliższych po obu stronach; anomalies: MAD z reszt całego szeregu", "")
+
+
 def v_c_earliest():
     c = rc()["causal"]
     leads = {m: c.get(m, {}).get("lead", -1) for m in "ABC"}
@@ -244,9 +291,11 @@ CLAIMS = [
     Claim("V3", "Plik `cmapss_fd001_unit1.txt` w tym repo to dokładna kopia tych 192 wierszy z oryginalnego `train_FD001.txt`", v_copy),
     Claim("V4", "**To jest test na n=1 (jeden silnik)**", v_n1),
     Claim("V5", "(do tego potrzeba pełnego zbioru 100 silników", v_100),
-    Claim("V6", "Czujnik do testu (sensor 4, T50 — temperatura na wylocie z LPT) dobrano **obiektywnie**: spośród 21 czujników "
-                "wybrano ten o największym przesunięciu średniej między ostatnimi 30 a pierwszymi 30 cyklami", v_select),
-    Claim("V7", "Ranking pokrył się 1:1 ze znanym z literatury zbiorem ok. 14 \"informative sensors\" dla FD001", v_literature),
+    Claim("V6", "Czujnik do testu (sensor 4, T50 — temperatura na wylocie z LPT) dobrano **algorytmicznie**: spośród 21 "
+                "czujników wybrano ten o największym przesunięciu średniej między ostatnimi 30 a pierwszymi 30 cyklami",
+          v_select_v11),
+    Claim("V7", "14 czujników o niezerowej zmienności to dokładnie znany z literatury zbiór ok. 14 \"informative sensors\" "
+                "dla FD001 (pozostałe 7 jest stałych)", v_literature_v11),
     Claim("V8", "3 kolejne cykle z \\|z\\|>3 względem pierwszych 30 cykli", v_rule_a),
     Claim("V9", "lokalny trend (gradient LSQ, k=8)", v_rule_b),
     Claim("V10", "domyślny próg factor=3.0×MAD", v_rule_c),
@@ -257,10 +306,14 @@ CLAIMS = [
     Claim("V15", "Lead time (cykli przed awarią)", v_causal),
     Claim("V16", "Metoda C zgłasza 3 pojedyncze, izolowane punkty (cykle 96, 126, 165), nie sygnał ciągły", v_iso),
     Claim("V17", "traktuj cykl 96 jako obiecujący trop, nie potwierdzony wynik", v_96),
-    Claim("V18", "metoda A) dał lepszy, pewniejszy wynik niż przeniesiony bez zmian mechanizm `flow` (metoda B)", v_a_better),
-    Claim("V19", "przy powolnym, prawie liniowym dryfie degradacyjnym lokalny gradient zmienia się niewiele aż do bardzo "
-                 "późnej fazy życia silnika", v_drift),
+    Claim("V18", "metoda A) dał lepszy, pewniejszy wynik niż przeniesiony bez zmian mechanizm `flow` (metoda B)", v_a_better_v11),
+    Claim("V19", "przy dryfie degradacyjnym, który jest prawie płaski przez większość życia i przyspiesza pod koniec "
+                 "(nachylenie w ostatniej trzeciej części ok. 27× większe niż w pierwszej)", v_drift_v11),
     Claim("V20", "`anomalies()` dał najwcześniejszy sygnał", v_c_earliest),
+    Claim("V21", "Przy odtwarzaniu na bieżąco (metoda widzi tylko cykle do bieżącego) A alarmuje trwale od cyklu 147 "
+                 "(lead 45), a B i C dają pojedyncze, rozproszone alarmy już od cyklu 87 (B w 8 cyklach, C w 5)", v_online),
+    Claim("V22", "metody B i C korzystają przy tym z przyszłych cykli (B: gradient z k=8 najbliższych cykli z obu stron; "
+                 "C: mediana z obu stron i próg MAD z całego przebiegu)", v_future),
     Claim("A1", "### Auto-wybór czujnika dla wgranego pliku (2026-09-22)", a_date),
     Claim("A2", "`compute_engine_run()` (jedyne realne dane, unit=1) zawsze używa sensora 4", a_engine4),
     Claim("A3", "sensor 4 nie ma tam żadnego uprzywilejowanego statusu", a_upload_auto),
@@ -281,8 +334,8 @@ CLAIMS = [
 
 FROZEN = {"../DATA/train_FD001.txt": "963b5e22825b34d8b21c69e1aeb4af3e647050eb672ee8834ba4b5d91d2de0f8"}
 ANCHORS = [("test_engine_degradation.py", "README.md")]
-ANCHOR_DISCLOSURE = None
+ANCHOR_DISCLOSURE = r"w tym samym commicie \(d3a6ddf\)"
 FORBIDDEN = [(r"wczesn\w+\s+ostrzeż\w*", r"\bnie\b|niepotwierdz|trop", "brak kontroli negatywnej i n = 1"),
              (r"walidacj\w*\s+statystyczn\w*", r"\bnie\b", "n = 1")]
-ABSOLUTE = [(r"\btak samo\b", "podaj różnicę"), (r"\bzawsze\b|\bnigdy\b", "słowo bezwzględne"),
+ABSOLUTE = [(r"\btak samo\b", "podaj różnicę"), (r"\bzawsze\b(?! używa sensora 4)|\bnigdy\b", "słowo bezwzględne"),
             (r"\bdowodzi\b|\budowodni\w*", "„dowodzi” wymaga dowodu"), (r"(?<!\d)100 ?%", "sprawdź liczność")]

@@ -4,6 +4,7 @@ Część NIEZALEŻNA (własny kod): dane vs referencja train_FD001, ranking czuj
 porównanie AST rdzenia (R11). Część KOD REPO: analysis.py/timdr_core.py (metody pod testem) — wynik tabeli,
 odtwarzanie przyczynowe (R8), sensor_scores (R12), pytest.
 Użycie (katalog repo): python docs/audit/recompute_av.py  ->  docs/audit/RECOMPUTE_AV.json
+v1.1 (aneks 1): dodana sekcja "online" (wzorzec alarmów przy odtwarzaniu na bieżąco); reszta bez zmian.
 """
 from __future__ import annotations
 
@@ -124,6 +125,18 @@ def main():
         if "C" not in causal and int(cyc[last]) in rr["method_c"]["anomaly_cycles"]:
             causal["C"] = int(cyc[last])
     out["causal"] = {m: {"known_at_cycle": c, "lead": int(cyc[-1] - c)} for m, c in causal.items()}
+
+    # v1.1 (aneks 1, post hoc): pelny wzorzec alarmow online - w ktorych cyklach metoda alarmuje, widzac tylko 1..c
+    online = {"A": [], "B": [], "C": []}
+    for c_end in range(31, len(cyc) + 1):
+        rr = analysis._analyze_series(cyc[:c_end], s4[:c_end], unit=1, sensor_name="s4", source="replay")
+        for m, key in (("A", "method_a"), ("B", "method_b")):
+            if np.all(np.abs(np.asarray(rr[key]["series"])[-3:]) > 3.0):
+                online[m].append(int(cyc[c_end - 1]))
+        if int(cyc[c_end - 1]) in rr["method_c"]["anomaly_cycles"]:
+            online["C"].append(int(cyc[c_end - 1]))
+    out["online"] = {m: {"cycles": v, "n": len(v),
+                         "share_after_first": len(v) / (int(cyc[-1]) - v[0] + 1) if v else 0.0} for m, v in online.items()}
 
     # R12 sensor_scores
     best, scores = analysis.select_informative_sensor(cyc, S)

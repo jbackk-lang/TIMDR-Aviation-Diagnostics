@@ -210,7 +210,10 @@ def _analyze_series(
         residuals,
         anomaly_points[0] if anomaly_points else None,
     )
-    method_c["false_positive_1_60"] = False  # brak formalnej kontroli, patrz README
+    # Liczone z listy anomalii (pierwsze 60 probek), tak jak dla A/B -- wczesniej pole bylo ustawiane na False
+    # bez obliczen, wiec dla danych z pliku/urzadzenia dashboard zawsze pokazywal "brak" (audyt, docs/audit/).
+    # Nadal BEZ kontroli negatywnej -- to tylko liczba anomalii w oknie 1-60, nie stopa falszywych alarmow.
+    method_c["false_positive_1_60"] = bool(any(i < 60 for i in anomaly_points))
     method_c["anomaly_cycles"] = [int(cycle[i]) for i in anomaly_points]
 
     return {

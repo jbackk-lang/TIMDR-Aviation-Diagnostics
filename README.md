@@ -30,12 +30,16 @@ patrz "Jak zrobić to porządnie" niżej).
 
 ## Metodologia (pre-rejestrowana w kodzie, patrz `test_engine_degradation.py`)
 
-Czujnik do testu (sensor 4, T50 — temperatura na wylocie z LPT) dobrano
-**obiektywnie**: spośród 21 czujników wybrano ten o największym przesunięciu
-średniej między ostatnimi 30 a pierwszymi 30 cyklami (w jednostkach
-odchylenia standardowego z początku życia). Ranking pokrył się 1:1 ze
-znanym z literatury zbiorem ok. 14 "informative sensors" dla FD001 — dobry
-sygnał, że dane są poprawnie sparsowane, nie artefakt.
+Reguły metod i wynik trafiły do gita w tym samym commicie (d3a6ddf), więc
+„pre-rejestrowana” znaczy tu „zapisana w kodzie”, a nie potwierdzona kolejnością w historii.
+
+Czujnik do testu (sensor 4, T50 — temperatura na wylocie z LPT) dobrano **algorytmicznie**: spośród 21 czujników wybrano ten o największym
+przesunięciu średniej między ostatnimi 30 a pierwszymi 30 cyklami (w jednostkach
+odchylenia standardowego z początku życia). Uwaga: wybór korzysta z końca życia tego
+samego silnika, na którym potem mierzy się czas ostrzeżenia (selekcja na wyniku) —
+sprzyja to wszystkim trzem metodom. 14 czujników o niezerowej zmienności to dokładnie znany z literatury zbiór ok. 14
+"informative sensors" dla FD001 (pozostałe 7 jest stałych) — to potwierdza poprawne
+sparsowanie kolumn, ale nie sam ranking (każdy ranking dałby tę samą czternastkę).
 
 Trzy metody, ten sam sygnał:
 
@@ -64,12 +68,21 @@ wynik**.
 wartości czujnika (metoda A) dał lepszy, pewniejszy wynik niż przeniesiony
 bez zmian mechanizm `flow` (metoda B) — dokładnie ten sam wzorzec co przy
 teście operatora torsji w sejsmologii: monitorowanie POCHODNEJ (trendu)
-zamiast wartości traci czułość, bo przy powolnym, prawie liniowym dryfie
-degradacyjnym lokalny gradient zmienia się niewiele aż do bardzo późnej
-fazy życia silnika. `anomalies()` dał najwcześniejszy sygnał, ale jego
+zamiast wartości traci czułość, bo przy dryfie degradacyjnym, który jest prawie płaski przez większość życia i przyspiesza
+pod koniec (nachylenie w ostatniej trzeciej części ok. 27× większe niż w pierwszej),
+lokalny gradient zmienia się niewiele aż do bardzo późnej fazy życia silnika. `anomalies()` dał najwcześniejszy sygnał, ale jego
 mechanizm (odstające punkty względem wygładzonej mediany) nie jest z
 natury dopasowany do wykrywania POCZĄTKU trendu, więc wynik wymaga
 potwierdzenia na kontroli negatywnej, zanim cokolwiek się z niego wywnioskuje.
+
+**Analiza wsteczna, nie monitoring na bieżąco.** Tabela wyżej liczy metody na całym
+przebiegu, a metody B i C korzystają przy tym z przyszłych cykli (B: gradient z k=8
+najbliższych cykli z obu stron; C: mediana z obu stron i próg MAD z całego przebiegu).
+Przy odtwarzaniu na bieżąco (metoda widzi tylko cykle do bieżącego) A alarmuje trwale
+od cyklu 147 (lead 45), a B i C dają pojedyncze, rozproszone alarmy już od cyklu 87
+(B w 8 cyklach, C w 5) — nie ciągły sygnał. Wniosek, że A jest pewniejsza, się
+utrzymuje; lead time B i C z tabeli nie jest tym, co dałby monitoring na bieżąco.
+Szczegóły: `docs/audit/`.
 
 ## Jak zrobić to porządnie (następny krok, wymaga maszyny bez blokady sieci)
 

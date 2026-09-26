@@ -206,3 +206,15 @@ def test_dominant_frequency_series_feeds_full_pipeline():
     r = compute_run_from_device_samples(freqs, port_label="Test Mic", device_kind="mikrofon")
     assert r["source"] == "device_live"
     assert len(r["cycle"]) == len(freqs)
+
+
+def test_method_c_false_positive_flag_is_computed():
+    """Audyt (docs/audit): flaga metody C byla ustawiana na False na sztywno. Anomalia w pierwszych 60 probkach
+    musi dac True, jej brak - False (unit 1: False, bo anomalie sa w cyklach 96, 126, 165)."""
+    from analysis import _analyze_series, compute_engine_run
+    rng = np.random.default_rng(0)
+    s = 100 + rng.normal(0, 0.1, 120)
+    s[40] += 5.0
+    r = _analyze_series(np.arange(1, 121, dtype=float), s, unit="t", sensor_name="t", source="test")
+    assert 40 + 1 in r["method_c"]["anomaly_cycles"] and r["method_c"]["false_positive_1_60"] is True
+    assert compute_engine_run()["method_c"]["false_positive_1_60"] is False
