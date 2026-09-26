@@ -1,0 +1,185 @@
+{
+  "data": {
+    "shape": [
+      192,
+      26
+    ],
+    "units_in_file": [
+      1
+    ],
+    "cycles_first_last": [
+      1,
+      192
+    ],
+    "cycles_consecutive": true,
+    "ref_sha256": "963b5e22825b34d8b21c69e1aeb4af3e647050eb672ee8834ba4b5d91d2de0f8",
+    "ref_units": 100,
+    "ref_unit1_rows": 192,
+    "equal_to_ref_unit1": true
+  },
+  "sensors": {
+    "n_scored": 14,
+    "top": 4,
+    "rank": [
+      4,
+      13,
+      11,
+      7,
+      8,
+      12,
+      21,
+      20,
+      15,
+      14,
+      2,
+      17,
+      3,
+      9
+    ],
+    "z": {
+      "2": 3.1385141946192707,
+      "3": 2.4532816434991975,
+      "4": 7.653536491749751,
+      "7": 5.97926980399608,
+      "8": 5.374615059705715,
+      "9": 1.4870920235451717,
+      "11": 6.2235367087259075,
+      "12": 5.239267569642701,
+      "13": 6.776686716229199,
+      "14": 3.608260021610454,
+      "15": 4.3985025074512345,
+      "17": 3.112715087397336,
+      "20": 4.681409765771581,
+      "21": 4.803869451379955
+    },
+    "top14": [
+      2,
+      3,
+      4,
+      7,
+      8,
+      9,
+      11,
+      12,
+      13,
+      14,
+      15,
+      17,
+      20,
+      21
+    ],
+    "top14_equals_literature": true,
+    "constant": [
+      1,
+      5,
+      6,
+      10,
+      16,
+      18,
+      19
+    ]
+  },
+  "method_a_independent": {
+    "alarm_cycle": 145,
+    "lead": 47,
+    "fp_1_60": false
+  },
+  "drift_shape": {
+    "dbic_lin_minus_quad": 56.924393412265374,
+    "curvature": 0.0013485965810610468,
+    "slope_first_third": 0.013080617495702928,
+    "slope_last_third": 0.3475460263007461,
+    "slope_ratio": 26.569542792220425
+  },
+  "core_ast": {
+    "compared": [
+      "__init__",
+      "_nearest_k_bounds",
+      "_safe_k",
+      "_validate",
+      "anomalies",
+      "flow",
+      "trm"
+    ],
+    "found_av": [
+      "__init__",
+      "_nearest_k_bounds",
+      "_safe_k",
+      "_validate",
+      "anomalies",
+      "flow",
+      "trm"
+    ],
+    "found_eq": [
+      "__init__",
+      "_nearest_k_bounds",
+      "_safe_k",
+      "_validate",
+      "anomalies",
+      "flow",
+      "trm"
+    ],
+    "identical": {
+      "__init__": true,
+      "_nearest_k_bounds": true,
+      "_safe_k": true,
+      "_validate": true,
+      "anomalies": true,
+      "flow": true,
+      "trm": true
+    }
+  },
+  "repo_run": {
+    "method_a": {
+      "alarm_cycle": 145,
+      "lead": 47,
+      "fp_1_60": false,
+      "anomaly_cycles": []
+    },
+    "method_b": {
+      "alarm_cycle": 174,
+      "lead": 18,
+      "fp_1_60": false,
+      "anomaly_cycles": []
+    },
+    "method_c": {
+      "alarm_cycle": 96,
+      "lead": 96,
+      "fp_1_60": false,
+      "anomaly_cycles": [
+        96,
+        126,
+        165
+      ]
+    },
+    "end_of_life": 192,
+    "sensor_name": "sensor 4 (T50 — temperatura na wylocie z LPT)"
+  },
+  "causal": {
+    "B": {
+      "known_at_cycle": 87,
+      "lead": 105
+    },
+    "C": {
+      "known_at_cycle": 87,
+      "lead": 105
+    },
+    "A": {
+      "known_at_cycle": 147,
+      "lead": 45
+    }
+  },
+  "auto_select": {
+    "best": 4,
+    "n_scores": 21,
+    "manual_scores_is_none": true,
+    "auto_sensor_number": 4,
+    "auto_n_scores": 21
+  },
+  "pytest_analysis_extra": {
+    "returncode": 0,
+    "tail": [
+      "13 passed in 1.66s"
+    ]
+  }
+}
